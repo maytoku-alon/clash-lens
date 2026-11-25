@@ -39,12 +39,28 @@ export function TrafficStackChart({
   const [brushMode, setBrushMode] = useState(false)
   const [inspectedRange, setInspectedRange] = useState<{ from: number; to: number } | null>(null)
   const [spikeItems, setSpikeItems] = useState<BurstEvent[]>([])
-  const [loadingSpike, setLoadingSpike] = useState(false)
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [showSlowLoading, setShowSlowLoading] = useState(false)
 
   const timestampsRef = useRef<number[]>([])
   const intervalRef = useRef<'minute' | 'hour' | 'day'>('hour')
+  const deviceIdRef = useRef(deviceId)
+  const scopeRef = useRef(scope)
+  const reqSeqRef = useRef(0)
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   timestampsRef.current = data?.timestamps ?? []
   intervalRef.current = data?.interval ?? 'hour'
+  deviceIdRef.current = deviceId
+  scopeRef.current = scope
+
+  useEffect(() => {
+    return () => {
+      if (loadingTimerRef.current) {
+        clearTimeout(loadingTimerRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -59,19 +75,50 @@ export function TrafficStackChart({
   }, [brushMode])
 
   const loadSpikeRange = async (fromTS: number, toTS: number) => {
+    const seq = ++reqSeqRef.current
+    if (loadingTimerRef.current) {
+      clearTimeout(loadingTimerRef.current)
+      loadingTimerRef.current = null
+    }
     setInspectedRange({ from: fromTS, to: toTS })
-    setLoadingSpike(true)
+    setShowSlowLoading(false)
+    loadingTimerRef.current = setTimeout(() => {
+      if (reqSeqRef.current === seq) {
+        setShowSlowLoading(true)
+      }
+    }, 150)
+
     try {
-      const res = await api.bursts({ deviceId, scope, from: fromTS, to: toTS }, 10)
+      const res = await api.bursts(
+        { deviceId: deviceIdRef.current, scope: scopeRef.current, from: fromTS, to: toTS },
+        10,
+      )
+      if (reqSeqRef.current !== seq) return
       setSpikeItems(res.items || [])
+      setHasLoaded(true)
     } catch {
+      if (reqSeqRef.current !== seq) return
       setSpikeItems([])
+      setHasLoaded(true)
     } finally {
-      setLoadingSpike(false)
+      if (reqSeqRef.current === seq) {
+        if (loadingTimerRef.current) {
+          clearTimeout(loadingTimerRef.current)
+          loadingTimerRef.current = null
+        }
+        setShowSlowLoading(false)
+      }
     }
   }
 
   const clearInspection = () => {
+    reqSeqRef.current++
+    if (loadingTimerRef.current) {
+      clearTimeout(loadingTimerRef.current)
+      loadingTimerRef.current = null
+    }
+    setShowSlowLoading(false)
+    setHasLoaded(false)
     setInspectedRange(null)
     setSpikeItems([])
     chartRef.current?.dispatchAction({ type: 'brush', areas: [] })
@@ -248,6 +295,11 @@ export function TrafficStackChart({
               <span className="font-mono tabular-nums text-[var(--cl-muted)]">
                 {formatFullTime(inspectedRange.from)} → {formatFullTime(inspectedRange.to)}
               </span>
+              {showSlowLoading && (
+                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                  查询中...
+                </span>
+              )}
             </div>
             <button
               onClick={clearInspection}
@@ -258,37 +310,54 @@ export function TrafficStackChart({
             </button>
           </div>
 
-          {loadingSpike ? (
-            <div className="py-3 text-xs text-[var(--cl-muted)]">正在排查该时段流向明细...</div>
-          ) : spikeItems.length === 0 ? (
-            <div className="py-3 text-xs text-[var(--cl-muted)]">该时段暂无记录明细。</div>
-          ) : (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {spikeItems.slice(0, 6).map((item, idx) => (
-                <button
-                  key={`${item.bucket_ts}-${item.process_display}-${item.root_domain}-${idx}`}
-                  onClick={() => onInspectApp(item.process_display)}
-                  className="flex flex-col gap-1 rounded-lg border border-[var(--cl-border)] bg-[var(--cl-card)] p-2.5 text-left transition hover:border-emerald-500/40"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-xs font-semibold">{item.process_display}</span>
-                    <span className="font-mono text-xs font-bold tabular-nums text-emerald-400">
-                      {formatBytes(item.total_bytes)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--cl-muted)]">
-                    <span className="truncate">
-                      {item.root_domain}
-                      {item.service_tag ? ` · ${item.service_tag}` : ''}
-                    </span>
-                    <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
-                      {item.route_type === 'DIRECT' ? 'DIRECT' : item.egress_node}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="min-h-[124px]">
+            {spikeItems.length > 0 ? (
+              <div
+                className={`grid gap-2 transition-opacity duration-150 sm:grid-cols-2 lg:grid-cols-3 ${
+                  showSlowLoading ? 'opacity-65' : 'opacity-100'
+                }`}
+              >
+                {spikeItems.slice(0, 6).map((item, idx) => (
+                  <button
+                    key={`${item.bucket_ts}-${item.process_display}-${item.root_domain}-${idx}`}
+                    onClick={() => onInspectApp(item.process_display)}
+                    className="flex flex-col gap-1 rounded-lg border border-[var(--cl-border)] bg-[var(--cl-card)] p-2.5 text-left transition hover:border-emerald-500/40"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-semibold">{item.process_display}</span>
+                      <span className="font-mono text-xs font-bold tabular-nums text-emerald-400">
+                        {formatBytes(item.total_bytes)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--cl-muted)]">
+                      <span className="truncate">
+                        {item.root_domain}
+                        {item.service_tag ? ` · ${item.service_tag}` : ''}
+                      </span>
+                      <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
+                        {item.route_type === 'DIRECT' ? 'DIRECT' : item.egress_node}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : !hasLoaded ? (
+              showSlowLoading ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <div
+                      key={n}
+                      className="h-[58px] animate-pulse rounded-lg border border-[var(--cl-border)] bg-[var(--cl-card)]/60"
+                    />
+                  ))}
+                </div>
+              ) : null
+            ) : (
+              <div className="flex h-[124px] items-center justify-center text-xs text-[var(--cl-muted)]">
+                该时段暂无记录明细。
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
