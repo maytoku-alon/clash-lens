@@ -1,0 +1,13 @@
+[Unit]
+Description=ClashLens Collector Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/clashlens-agent --headless --config /etc/clashlens/agent.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

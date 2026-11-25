@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --cl-bg: #f8fafc;
+    --cl-surface: #ffffff;
+    --cl-card: #ffffff;
+    --cl-hover: #f1f5f9;
+    --cl-border: rgba(15, 23, 42, 0.09);
+    --cl-text: #0f172a;
+    --cl-muted: #64748b;
+  }
+
+  .dark {
+    --cl-bg: #09090b;
+    --cl-surface: #0f0f13;
+    --cl-card: #141419;
+    --cl-hover: #1c1c23;
+    --cl-border: rgba(255, 255, 255, 0.08);
+    --cl-text: #fafafa;
+    --cl-muted: #a1a1aa;
+  }
+
+  body {
+    background-color: var(--cl-bg);
+    color: var(--cl-text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-card {
+  background-color: var(--cl-card);
+  border: 1px solid var(--cl-border);
+}
+
+.cl-surface {
+  background-color: var(--cl-surface);
+  border-color: var(--cl-border);
+}
+
+@layer components {
+  .cl-btn-primary {
+    @apply inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-3 text-[12px] font-medium leading-none tracking-[-0.01em] whitespace-nowrap transition cursor-pointer disabled:pointer-events-none disabled:opacity-45;
+    background-color: #0f172a;
+    color: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+  }
+  .cl-btn-primary:hover {
+    background-color: #1e293b;
+  }
+  .dark .cl-btn-primary {
+    background-color: #f4f4f5;
+    color: #09090b;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+  .dark .cl-btn-primary:hover {
+    background-color: #ffffff;
+  }
+
+  .cl-btn-secondary {
+    @apply inline-flex h-7 items-center justify-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium leading-none tracking-[-0.01em] whitespace-nowrap transition cursor-pointer disabled:pointer-events-none disabled:opacity-45;
+    border-color: var(--cl-border);
+    background-color: var(--cl-surface);
+    color: var(--cl-text);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  .cl-btn-secondary:hover {
+    background-color: var(--cl-hover);
+  }
+
+  .cl-btn-accent {
+    @apply inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/12 px-2.5 text-[12px] font-medium leading-none tracking-[-0.01em] text-emerald-500 whitespace-nowrap transition cursor-pointer hover:bg-emerald-500/20;
+  }
+
+  .cl-segment {
+    @apply inline-flex h-7 items-center gap-0.5 rounded-md border p-0.5;
+    border-color: var(--cl-border);
+    background-color: var(--cl-bg);
+  }
+
+  .cl-segment-item {
+    @apply inline-flex h-[22px] items-center justify-center gap-1.5 rounded-[4px] px-2 text-[11px] font-medium leading-none tracking-[-0.01em] whitespace-nowrap transition cursor-pointer;
+    color: var(--cl-muted);
+  }
+  .cl-segment-item:hover {
+    color: var(--cl-text);
+  }
+  .cl-segment-item-active {
+    background-color: var(--cl-card);
+    color: var(--cl-text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+
+  .cl-pill {
+    @apply inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11.5px] font-medium leading-none tracking-[-0.01em] whitespace-nowrap transition cursor-pointer;
+    border-color: var(--cl-border);
+    background-color: var(--cl-surface);
+    color: var(--cl-muted);
+  }
+  .cl-pill:hover {
+    color: var(--cl-text);
+    background-color: var(--cl-hover);
+  }
+  .cl-pill-active {
+    border-color: rgba(16, 185, 129, 0.4);
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+  }
+
+  .cl-icon-btn {
+    @apply inline-flex h-7 w-7 items-center justify-center rounded-md border transition cursor-pointer;
+    border-color: var(--cl-border);
+    background-color: var(--cl-surface);
+    color: var(--cl-muted);
+  }
+  .cl-icon-btn:hover {
+    background-color: var(--cl-hover);
+    color: var(--cl-text);
+  }
+
+  .cl-input {
+    @apply h-8 rounded-md border px-2.5 text-[12px] outline-none transition;
+    border-color: var(--cl-border);
+    background-color: var(--cl-bg);
+    color: var(--cl-text);
+  }
+  .cl-input:focus {
+    border-color: rgba(16, 185, 129, 0.55);
+  }
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(161, 161, 170, 0.45);
+}

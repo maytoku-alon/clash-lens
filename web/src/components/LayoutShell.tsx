@@ -1,0 +1,295 @@
+import type { ReactNode } from 'react'
+import {
+  Activity,
+  AppWindow,
+  Laptop,
+  LayoutDashboard,
+  LogOut,
+  Maximize2,
+  Minimize2,
+  Moon,
+  Network,
+  Server,
+  Settings,
+  Smartphone,
+  Sun,
+  Monitor,
+} from 'lucide-react'
+import type { DeviceInfo, LiveHubSnapshot, RangePreset, TrafficScope } from '../types/api'
+import { formatSpeed } from '../utils/format'
+
+export type NavTab = 'overview' | 'apps' | 'nodes' | 'live' | 'devices'
+
+interface LayoutShellProps {
+  activeTab: NavTab
+  onTabChange: (tab: NavTab) => void
+  devices: DeviceInfo[]
+  selectedDeviceId: string
+  onDeviceChange: (id: string) => void
+  scope: TrafficScope
+  onScopeChange: (s: TrafficScope) => void
+  preset: RangePreset
+  onPresetChange: (p: RangePreset) => void
+  customDay: string | null
+  onClearCustomDay: () => void
+  live: LiveHubSnapshot | null
+  isDark: boolean
+  onToggleTheme: () => void
+  kiosk: boolean
+  onToggleKiosk: () => void
+  localMode?: boolean
+  onLogout: () => void
+  children: ReactNode
+}
+
+const NAV_ITEMS: { key: NavTab; label: string; icon: typeof LayoutDashboard }[] = [
+  { key: 'overview', label: '总览大屏', icon: LayoutDashboard },
+  { key: 'apps', label: '应用 × 网站', icon: AppWindow },
+  { key: 'nodes', label: '节点与套餐', icon: Network },
+  { key: 'live', label: '实时监控', icon: Activity },
+  { key: 'devices', label: '设备与设置', icon: Settings },
+]
+
+const PRESETS: RangePreset[] = ['1h', '24h', '7d', '30d', '90d', '1y']
+
+function DeviceIcon({ icon }: { icon: string }) {
+  switch (icon) {
+    case 'laptop':
+      return <Laptop className="h-3.5 w-3.5" />
+    case 'smartphone':
+      return <Smartphone className="h-3.5 w-3.5" />
+    case 'server':
+      return <Server className="h-3.5 w-3.5" />
+    default:
+      return <Monitor className="h-3.5 w-3.5" />
+  }
+}
+
+export function LayoutShell({
+  activeTab,
+  onTabChange,
+  devices,
+  selectedDeviceId,
+  onDeviceChange,
+  scope,
+  onScopeChange,
+  preset,
+  onPresetChange,
+  customDay,
+  onClearCustomDay,
+  live,
+  isDark,
+  onToggleTheme,
+  kiosk,
+  onToggleKiosk,
+  localMode = false,
+  onLogout,
+  children,
+}: LayoutShellProps) {
+  const showAnalyticsBar = activeTab !== 'devices' && activeTab !== 'live'
+
+  return (
+    <div className="flex min-h-screen bg-[var(--cl-bg)] text-[var(--cl-text)]">
+      {/* Left Navigation Rail */}
+      {!kiosk && (
+        <aside className="cl-surface sticky top-0 flex h-screen w-16 shrink-0 flex-col justify-between border-r px-2 py-4 lg:w-56 lg:px-3">
+          <div>
+            <div className="mb-6 flex items-center gap-2.5 px-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 text-zinc-950 shadow-sm">
+                <Activity className="h-4.5 w-4.5 stroke-[2.5]" />
+              </div>
+              <div className="hidden lg:block">
+                <div className="text-sm font-bold tracking-tight">ClashLens</div>
+                <div className="text-[11px] text-[var(--cl-muted)]">
+                  {localMode ? '本地独立模式' : '流量透视监控'}
+                </div>
+              </div>
+            </div>
+
+            <nav className="space-y-1">
+              {NAV_ITEMS.map((item) => {
+                const Icon = item.icon
+                const active = activeTab === item.key
+                return (
+                  <button
+                    type="button"
+                    key={item.key}
+                    onClick={() => onTabChange(item.key)}
+                    className={`flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[12px] font-medium tracking-[-0.01em] transition ${
+                      active
+                        ? 'bg-emerald-500/12 text-emerald-500'
+                        : 'text-[var(--cl-muted)] hover:bg-[var(--cl-hover)] hover:text-[var(--cl-text)]'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span className="hidden lg:inline">{item.label}</span>
+                  </button>
+                )
+              })}
+            </nav>
+          </div>
+
+          {!localMode && (
+            <div className="space-y-1 border-t border-[var(--cl-border)] pt-3">
+              <button
+                type="button"
+                onClick={onLogout}
+                className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[12px] font-medium tracking-[-0.01em] text-[var(--cl-muted)] transition hover:bg-rose-500/10 hover:text-rose-400"
+              >
+                <LogOut className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden lg:inline">退出登录</span>
+              </button>
+            </div>
+          )}
+        </aside>
+      )}
+
+      {/* Main Content */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Sticky Top Bar */}
+        <header className="cl-surface sticky top-0 z-20 border-b px-4 py-2 backdrop-blur-md sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            {/* Device Pills */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {showAnalyticsBar ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onDeviceChange('all')}
+                    className={`cl-pill ${selectedDeviceId === 'all' ? 'cl-pill-active' : ''}`}
+                  >
+                    <span>全部设备</span>
+                    <span className="font-mono text-[10px] opacity-75">({devices.length})</span>
+                  </button>
+
+                  {devices.map((d) => {
+                    const liveDev = live?.devices?.find((ld) => ld.device_id === d.id)
+                    const online = liveDev?.online ?? d.online
+                    const tun = liveDev?.tun_enabled ?? d.tun_enabled
+                    const active = selectedDeviceId === d.id
+                    return (
+                      <button
+                        type="button"
+                        key={d.id}
+                        onClick={() => onDeviceChange(d.id)}
+                        className={`cl-pill ${active ? 'cl-pill-active' : ''}`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                            online ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' : 'bg-zinc-500'
+                          }`}
+                        />
+                        <DeviceIcon icon={d.icon} />
+                        <span>{d.name}</span>
+                        {tun && (
+                          <span className="rounded bg-cyan-500/15 px-1 py-0.5 font-mono text-[9px] text-cyan-400">
+                            TUN
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </>
+              ) : (
+                <div className="text-[13px] font-semibold tracking-tight">
+                  {activeTab === 'live' ? '多端实时监控流' : '设备接入与系统设置'}
+                </div>
+              )}
+            </div>
+
+            {/* Right Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              {showAnalyticsBar && (
+                <>
+                  {/* Scope switch */}
+                  <div className="cl-segment">
+                    {(
+                      [
+                        { k: 'all', l: '全部出口' },
+                        { k: 'proxy', l: '仅代理' },
+                        { k: 'direct', l: '仅直连' },
+                      ] as const
+                    ).map((s) => (
+                      <button
+                        type="button"
+                        key={s.k}
+                        onClick={() => onScopeChange(s.k)}
+                        className={`cl-segment-item ${scope === s.k ? 'cl-segment-item-active' : ''}`}
+                      >
+                        {s.l}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Range presets or selected day */}
+                  {customDay ? (
+                    <button
+                      type="button"
+                      onClick={onClearCustomDay}
+                      className="cl-btn-accent font-mono text-[11px]"
+                    >
+                      <span>{customDay}</span>
+                      <span className="text-[10px] opacity-80">× 清除</span>
+                    </button>
+                  ) : (
+                    <div className="cl-segment">
+                      {PRESETS.map((p) => (
+                        <button
+                          type="button"
+                          key={p}
+                          onClick={() => onPresetChange(p)}
+                          className={`cl-segment-item font-mono ${
+                            preset === p ? 'cl-segment-item-active !text-emerald-400' : ''
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Fixed-width Live rate badge (zero jitter on 2s ticks) */}
+              <button
+                type="button"
+                onClick={() => onTabChange('live')}
+                className="hidden h-7 cursor-pointer items-center gap-2 rounded-md border border-[var(--cl-border)] bg-[var(--cl-surface)] px-2.5 font-mono text-[11px] leading-none tabular-nums transition hover:border-cyan-500/40 sm:inline-flex"
+                title="查看实时流量监控"
+              >
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="inline-block w-[82px] shrink-0 whitespace-nowrap text-right text-cyan-400">
+                  ↓ {formatSpeed(live?.total_down_bps)}
+                </span>
+                <span className="h-3 w-px shrink-0 bg-[var(--cl-border)]" />
+                <span className="inline-block w-[82px] shrink-0 whitespace-nowrap text-right text-violet-400">
+                  ↑ {formatSpeed(live?.total_up_bps)}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onToggleTheme}
+                className="cl-icon-btn"
+                title={isDark ? '切换浅色模式' : '切换深色模式'}
+              >
+                {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={onToggleKiosk}
+                className="cl-icon-btn"
+                title={kiosk ? '退出全屏大屏模式' : '全屏大屏展示'}
+              >
+                {kiosk ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 sm:p-6">{children}</main>
+      </div>
+    </div>
+  )
+}

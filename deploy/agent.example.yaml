@@ -1,0 +1,33 @@
+# ClashLens Agent 配置文件示例
+# 复制为 %APPDATA%\ClashLens\agent.yaml（Windows）或 /etc/clashlens/agent.yaml（Linux）
+
+# 中心监控服务端地址（纯本地模式下可省略，或改用 clashlens-local / --local 参数）
+server_url: "https://clashlens.example.com"
+
+# 在大屏 -> 设备与设置 -> 添加监控设备 生成的设备 Token
+device_token: "cl_dev_replace_with_your_token"
+
+# Clash / Mihomo 控制器地址：
+#   auto                  -> 自动探测 Clash Verge Rev 管道、Unix Socket 或 127.0.0.1:9090
+#   pipe://...            -> 显式指定 Windows Named Pipe
+#   unix:///var/run/...   -> 显式指定 Unix Socket
+#   http://127.0.0.1:9090 -> 显式指定 HTTP 外部控制端口
+clash_endpoint: "auto"
+clash_secret: ""
+
+# 隐私脱敏：上报前自动对规则与进程路径中的本机用户名和目录做脱敏（强烈建议开启）
+sanitize_paths: true
+# mask（默认：保留末级应用目录，如 <USER_HOME>/.../antigravity）| strict（<REDACTED>）| off（不脱敏）
+sanitize_mode: "mask"
+
+# 可选：无需中心服务端，直接在采集端内嵌运行本地监控大屏（仅监听 127.0.0.1）
+local_mode: false
+local_addr: "127.0.0.1:18080"
+
+# 采集、批量上报、实时心跳周期（秒）
+flush_interval_sec: 60
+upload_interval_sec: 15
+live_push_interval_sec: 2
+
+# 离线缓冲队列 buffer.db（以及本地模式数据库 clashlens-local.db）保存目录
+# data_dir: ""
