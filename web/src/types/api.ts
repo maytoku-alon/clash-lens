@@ -41,6 +41,7 @@ export interface DeviceInfo {
   live_conns: number
   today_bytes: number
   today_proxy_bytes: number
+  dashboard_url?: string
 }
 
 export interface CreateDeviceResponse {
@@ -382,6 +383,7 @@ export interface LiveDeviceSnapshot {
   find_process_mode: string
   inbound_mode: string
   mihomo_version: string
+  dashboard_url?: string
 }
 
 export interface LiveHubSnapshot {

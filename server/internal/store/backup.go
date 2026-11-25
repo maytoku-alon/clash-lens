@@ -39,7 +39,7 @@ func (s *Store) ExportBackup(ctx context.Context, appVersion string) (protocol.B
 
 	devRows, err := s.db.QueryContext(ctx, `
 		SELECT id, name, os, icon, created_at, last_seen_at,
-		       mihomo_version, tun_enabled, sniffer_enabled, find_process_mode, inbound_mode
+		       mihomo_version, tun_enabled, sniffer_enabled, find_process_mode, inbound_mode, dashboard_url
 		FROM devices
 		ORDER BY created_at ASC
 	`)
@@ -51,7 +51,7 @@ func (s *Store) ExportBackup(ctx context.Context, appVersion string) (protocol.B
 		var tunInt, sniffInt int
 		if err := devRows.Scan(
 			&d.ID, &d.Name, &d.OS, &d.Icon, &d.CreatedAt, &d.LastSeenAt,
-			&d.MihomoVersion, &tunInt, &sniffInt, &d.FindProcessMode, &d.InboundMode,
+			&d.MihomoVersion, &tunInt, &sniffInt, &d.FindProcessMode, &d.InboundMode, &d.DashboardURL,
 		); err != nil {
 			_ = devRows.Close()
 			return archive, err
@@ -225,13 +225,18 @@ func (s *Store) ImportBackup(ctx context.Context, archive protocol.BackupArchive
 			createdAt = time.Now().Unix()
 		}
 
+		dashboardURL, urlErr := sanitizeDashboardURL(d.DashboardURL)
+		if urlErr != nil {
+			dashboardURL = ""
+		}
+
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO devices (
 				id, name, os, icon, token_hash, token_prefix, created_at, last_seen_at,
-				mihomo_version, tun_enabled, sniffer_enabled, find_process_mode, inbound_mode
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				mihomo_version, tun_enabled, sniffer_enabled, find_process_mode, inbound_mode, dashboard_url
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, id, name, osName, icon, "imported_"+uuid.NewString(), "imported", createdAt, d.LastSeenAt,
-			d.MihomoVersion, boolToInt(d.TunEnabled), boolToInt(d.SnifferEnabled), d.FindProcessMode, d.InboundMode,
+			d.MihomoVersion, boolToInt(d.TunEnabled), boolToInt(d.SnifferEnabled), d.FindProcessMode, d.InboundMode, dashboardURL,
 		)
 		if err != nil {
 			s.mu.Unlock()

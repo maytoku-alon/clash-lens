@@ -159,6 +159,7 @@ func (h *Hub) BuildSnapshot(ctx context.Context) (protocol.LiveHubSnapshot, erro
 			FindProcessMode: d.FindProcessMode,
 			InboundMode:     d.InboundMode,
 			MihomoVersion:   d.MihomoVersion,
+			DashboardURL:    d.DashboardURL,
 		}
 		if entry, ok := liveCopy[d.ID]; ok && (now-entry.updatedAt) <= h.onlineThreshold {
 			item.Online = true

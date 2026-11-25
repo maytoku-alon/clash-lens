@@ -2,21 +2,24 @@ import type { ReactNode } from 'react'
 import {
   Activity,
   AppWindow,
+  ExternalLink,
   Laptop,
   LayoutDashboard,
   LogOut,
   Maximize2,
   Minimize2,
+  Monitor,
   Moon,
   Network,
   Server,
   Settings,
   Smartphone,
   Sun,
-  Monitor,
 } from 'lucide-react'
+import { useTheme } from '../theme/ThemeProvider'
 import type { DeviceInfo, LiveHubSnapshot, RangePreset, TrafficScope } from '../types/api'
 import { formatSpeed } from '../utils/format'
+import { AppearancePopover } from './AppearancePopover'
 
 export type NavTab = 'overview' | 'apps' | 'nodes' | 'live' | 'devices'
 
@@ -33,8 +36,6 @@ interface LayoutShellProps {
   customDay: string | null
   onClearCustomDay: () => void
   live: LiveHubSnapshot | null
-  isDark: boolean
-  onToggleTheme: () => void
   kiosk: boolean
   onToggleKiosk: () => void
   localMode?: boolean
@@ -55,13 +56,13 @@ const PRESETS: RangePreset[] = ['1h', '24h', '7d', '30d', '90d', '1y']
 function DeviceIcon({ icon }: { icon: string }) {
   switch (icon) {
     case 'laptop':
-      return <Laptop className="h-3.5 w-3.5" />
+      return <Laptop className="h-3.5 w-3.5" strokeWidth={1.6} />
     case 'smartphone':
-      return <Smartphone className="h-3.5 w-3.5" />
+      return <Smartphone className="h-3.5 w-3.5" strokeWidth={1.6} />
     case 'server':
-      return <Server className="h-3.5 w-3.5" />
+      return <Server className="h-3.5 w-3.5" strokeWidth={1.6} />
     default:
-      return <Monitor className="h-3.5 w-3.5" />
+      return <Monitor className="h-3.5 w-3.5" strokeWidth={1.6} />
   }
 }
 
@@ -78,29 +79,36 @@ export function LayoutShell({
   customDay,
   onClearCustomDay,
   live,
-  isDark,
-  onToggleTheme,
   kiosk,
   onToggleKiosk,
   localMode = false,
   onLogout,
   children,
 }: LayoutShellProps) {
+  const { isDark, toggleColorMode } = useTheme()
   const showAnalyticsBar = activeTab !== 'devices' && activeTab !== 'live'
+  const selectedDevice = selectedDeviceId === 'all' ? undefined : devices.find((d) => d.id === selectedDeviceId)
 
   return (
-    <div className="flex min-h-screen bg-[var(--cl-bg)] text-[var(--cl-text)]">
+    <div className="flex min-h-screen bg-[var(--cl-bg-page)] text-[var(--cl-text-primary)]">
       {/* Left Navigation Rail */}
       {!kiosk && (
         <aside className="cl-surface sticky top-0 flex h-screen w-16 shrink-0 flex-col justify-between border-r px-2 py-4 lg:w-56 lg:px-3">
           <div>
             <div className="mb-6 flex items-center gap-2.5 px-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 text-zinc-950 shadow-sm">
-                <Activity className="h-4.5 w-4.5 stroke-[2.5]" />
+              <div
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-sm"
+                style={{
+                  backgroundColor: 'var(--cl-accent-soft)',
+                  color: 'var(--cl-accent-primary)',
+                  border: '1px solid var(--cl-border-focus)',
+                }}
+              >
+                <Activity className="h-4 w-4" strokeWidth={2} />
               </div>
               <div className="hidden lg:block">
                 <div className="text-sm font-bold tracking-tight">ClashLens</div>
-                <div className="text-[11px] text-[var(--cl-muted)]">
+                <div className="text-[11px] text-[var(--cl-text-muted)]">
                   {localMode ? '本地独立模式' : '流量透视监控'}
                 </div>
               </div>
@@ -115,13 +123,19 @@ export function LayoutShell({
                     type="button"
                     key={item.key}
                     onClick={() => onTabChange(item.key)}
-                    className={`flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[12px] font-medium tracking-[-0.01em] transition ${
+                    className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium leading-[1.4] tracking-[-0.01em] transition"
+                    style={
                       active
-                        ? 'bg-emerald-500/12 text-emerald-500'
-                        : 'text-[var(--cl-muted)] hover:bg-[var(--cl-hover)] hover:text-[var(--cl-text)]'
-                    }`}
+                        ? {
+                            backgroundColor: 'var(--cl-accent-soft)',
+                            color: 'var(--cl-accent-primary)',
+                          }
+                        : {
+                            color: 'var(--cl-text-muted)',
+                          }
+                    }
                   >
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <Icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
                     <span className="hidden lg:inline">{item.label}</span>
                   </button>
                 )
@@ -130,13 +144,13 @@ export function LayoutShell({
           </div>
 
           {!localMode && (
-            <div className="space-y-1 border-t border-[var(--cl-border)] pt-3">
+            <div className="space-y-1 border-t pt-3" style={{ borderColor: 'var(--cl-border-subtle)' }}>
               <button
                 type="button"
                 onClick={onLogout}
-                className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[12px] font-medium tracking-[-0.01em] text-[var(--cl-muted)] transition hover:bg-rose-500/10 hover:text-rose-400"
+                className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium tracking-[-0.01em] text-[var(--cl-text-muted)] transition hover:bg-rose-500/10 hover:text-rose-400"
               >
-                <LogOut className="h-3.5 w-3.5 shrink-0" />
+                <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.5} />
                 <span className="hidden lg:inline">退出登录</span>
               </button>
             </div>
@@ -175,20 +189,44 @@ export function LayoutShell({
                         className={`cl-pill ${active ? 'cl-pill-active' : ''}`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                            online ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]' : 'bg-zinc-500'
-                          }`}
+                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor: online ? 'var(--cl-status-success)' : 'var(--cl-text-muted)',
+                          }}
                         />
                         <DeviceIcon icon={d.icon} />
                         <span>{d.name}</span>
                         {tun && (
-                          <span className="rounded bg-cyan-500/15 px-1 py-0.5 font-mono text-[9px] text-cyan-400">
+                          <span
+                            className="rounded px-1 py-0.5 font-mono text-[9px]"
+                            style={{
+                              backgroundColor: 'var(--cl-accent-soft)',
+                              color: 'var(--cl-accent-primary)',
+                            }}
+                          >
                             TUN
                           </span>
                         )}
                       </button>
                     )
                   })}
+
+                  {selectedDevice?.dashboard_url && (
+                    <a
+                      href={selectedDevice.dashboard_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="cl-pill"
+                      style={{
+                        borderColor: 'var(--cl-border-focus)',
+                        color: 'var(--cl-accent-primary)',
+                      }}
+                      title={`打开 ${selectedDevice.name} 的 Clash 控制面板`}
+                    >
+                      <span>管理面板</span>
+                      <ExternalLink className="h-3 w-3" strokeWidth={1.6} />
+                    </a>
+                  )}
                 </>
               ) : (
                 <div className="text-[13px] font-semibold tracking-tight">
@@ -239,8 +277,9 @@ export function LayoutShell({
                           key={p}
                           onClick={() => onPresetChange(p)}
                           className={`cl-segment-item font-mono ${
-                            preset === p ? 'cl-segment-item-active !text-emerald-400' : ''
+                            preset === p ? 'cl-segment-item-active' : ''
                           }`}
+                          style={preset === p ? { color: 'var(--cl-accent-primary)' } : undefined}
                         >
                           {p}
                         </button>
@@ -254,26 +293,41 @@ export function LayoutShell({
               <button
                 type="button"
                 onClick={() => onTabChange('live')}
-                className="hidden h-7 cursor-pointer items-center gap-2 rounded-md border border-[var(--cl-border)] bg-[var(--cl-surface)] px-2.5 font-mono text-[11px] leading-none tabular-nums transition hover:border-cyan-500/40 sm:inline-flex"
+                className="hidden h-7 cursor-pointer items-center gap-2 rounded-md border px-2.5 font-mono text-[11px] leading-none tabular-nums transition sm:inline-flex"
+                style={{
+                  borderColor: 'var(--cl-border-subtle)',
+                  backgroundColor: 'var(--cl-bg-sidebar)',
+                }}
                 title="查看实时流量监控"
               >
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 animate-pulse" />
-                <span className="inline-block w-[82px] shrink-0 whitespace-nowrap text-right text-cyan-400">
+                <span
+                  className="h-1.5 w-1.5 shrink-0 rounded-full animate-pulse"
+                  style={{ backgroundColor: 'var(--cl-status-success)' }}
+                />
+                <span
+                  className="inline-block w-[82px] shrink-0 whitespace-nowrap text-right"
+                  style={{ color: 'var(--cl-accent-primary)' }}
+                >
                   ↓ {formatSpeed(live?.total_down_bps)}
                 </span>
-                <span className="h-3 w-px shrink-0 bg-[var(--cl-border)]" />
-                <span className="inline-block w-[82px] shrink-0 whitespace-nowrap text-right text-violet-400">
+                <span className="h-3 w-px shrink-0" style={{ backgroundColor: 'var(--cl-border-subtle)' }} />
+                <span
+                  className="inline-block w-[82px] shrink-0 whitespace-nowrap text-right"
+                  style={{ color: 'var(--cl-text-secondary)' }}
+                >
                   ↑ {formatSpeed(live?.total_up_bps)}
                 </span>
               </button>
 
+              <AppearancePopover />
+
               <button
                 type="button"
-                onClick={onToggleTheme}
+                onClick={toggleColorMode}
                 className="cl-icon-btn"
                 title={isDark ? '切换浅色模式' : '切换深色模式'}
               >
-                {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                {isDark ? <Sun className="h-3.5 w-3.5" strokeWidth={1.6} /> : <Moon className="h-3.5 w-3.5" strokeWidth={1.6} />}
               </button>
 
               <button
@@ -282,13 +336,17 @@ export function LayoutShell({
                 className="cl-icon-btn"
                 title={kiosk ? '退出全屏大屏模式' : '全屏大屏展示'}
               >
-                {kiosk ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                {kiosk ? (
+                  <Minimize2 className="h-3.5 w-3.5" strokeWidth={1.6} />
+                ) : (
+                  <Maximize2 className="h-3.5 w-3.5" strokeWidth={1.6} />
+                )}
               </button>
             </div>
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1600px] flex-1 p-4 sm:p-6">{children}</main>
+        <main className="cl-main-container mx-auto w-full flex-1 p-4 sm:p-6">{children}</main>
       </div>
     </div>
   )

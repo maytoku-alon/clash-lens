@@ -1,11 +1,37 @@
 <!doctype html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN" class="dark" data-theme="default" data-mode="dark" data-layout="classic">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ClashLens — 多端 Clash 流量透视大屏</title>
+    <script>
+      !(function () {
+        try {
+          var r = document.documentElement;
+          var themeId = localStorage.getItem('clashlens_theme_id') || 'default';
+          var mode = localStorage.getItem('clashlens_color_mode');
+          if (mode !== 'light' && mode !== 'dark') {
+            var legacy = localStorage.getItem('clashlens_theme');
+            mode = legacy === 'light' || legacy === 'dark' ? legacy : 'dark';
+            localStorage.setItem('clashlens_color_mode', mode);
+          }
+          var layout = localStorage.getItem('clashlens_layout');
+          if (layout !== 'classic' && layout !== 'bento') {
+            layout = themeId === 'obsidian-plum' ? 'bento' : 'classic';
+          }
+          r.setAttribute('data-theme', themeId);
+          r.setAttribute('data-mode', mode);
+          r.setAttribute('data-layout', layout);
+          if (mode === 'dark') {
+            r.classList.add('dark');
+          } else {
+            r.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

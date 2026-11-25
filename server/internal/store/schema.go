@@ -1,5 +1,11 @@
 package store
 
+import (
+	"database/sql"
+	"fmt"
+	"strings"
+)
+
 func (s *Store) migrate() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS app_settings (
@@ -23,7 +29,8 @@ func (s *Store) migrate() error {
 			inbound_mode TEXT NOT NULL DEFAULT '',
 			live_up_bps INTEGER NOT NULL DEFAULT 0,
 			live_down_bps INTEGER NOT NULL DEFAULT 0,
-			live_conns INTEGER NOT NULL DEFAULT 0
+			live_conns INTEGER NOT NULL DEFAULT 0,
+			dashboard_url TEXT NOT NULL DEFAULT ''
 		);`,
 		`CREATE TABLE IF NOT EXISTS ingest_batches (
 			device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
@@ -107,5 +114,37 @@ func (s *Store) migrate() error {
 			return err
 		}
 	}
-	return nil
+	return s.ensureColumn("devices", "dashboard_url", "TEXT NOT NULL DEFAULT ''")
+}
+
+func (s *Store) ensureColumn(table, column, definition string) error {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	var exists bool
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dfltValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if strings.EqualFold(name, column) {
+			exists = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	_ = rows.Close()
+	if exists {
+		return nil
+	}
+	_, err = s.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
+	return err
 }

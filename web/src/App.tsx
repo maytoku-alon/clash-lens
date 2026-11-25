@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api } from './api/client'
+import { authApi } from './api/authApi'
+import { deviceApi } from './api/deviceApi'
+import { trafficApi } from './api/trafficApi'
 import { LayoutShell, type NavTab } from './components/LayoutShell'
 import { AppsExplorerPage } from './pages/AppsExplorerPage'
 import { AuthGate } from './pages/AuthGate'
@@ -31,24 +33,12 @@ export function App() {
   const [explorerTarget, setExplorerTarget] = useState('')
   const [settingsSubTab, setSettingsSubTab] = useState<'devices' | 'settings'>('devices')
 
-  // Theme & Kiosk
-  const [isDark, setIsDark] = useState(() => localStorage.getItem('clashlens_theme') !== 'light')
+  // Kiosk fullscreen state
   const [kiosk, setKiosk] = useState(false)
 
-  // Real-time WebSocket stream state
+  // Real-time WebSocket stream state (never cached)
   const [live, setLive] = useState<LiveHubSnapshot | null>(null)
   const [rateHistory, setRateHistory] = useState<{ time: string; down: number; up: number }[]>([])
-
-  useEffect(() => {
-    const root = document.documentElement
-    if (isDark) {
-      root.classList.add('dark')
-      localStorage.setItem('clashlens_theme', 'dark')
-    } else {
-      root.classList.remove('dark')
-      localStorage.setItem('clashlens_theme', 'light')
-    }
-  }, [isDark])
 
   useEffect(() => {
     const onFs = () => setKiosk(Boolean(document.fullscreenElement))
@@ -58,7 +48,7 @@ export function App() {
 
   const checkAuth = useCallback(async () => {
     try {
-      const status = await api.authStatus()
+      const status = await authApi.status()
       setAuth(status)
     } catch {
       setAuth({ initialized: true, authenticated: false, version: '' })
@@ -69,9 +59,9 @@ export function App() {
     void checkAuth()
   }, [checkAuth])
 
-  const loadDevices = useCallback(async () => {
+  const loadDevices = useCallback(async (force = false) => {
     try {
-      const res = await api.listDevices()
+      const res = await deviceApi.list({ force })
       setDevices(res.items || [])
     } catch {
       // ignore
@@ -81,10 +71,10 @@ export function App() {
   // Refresh devices and clock periodically while authenticated
   useEffect(() => {
     if (!auth?.authenticated) return
-    void loadDevices()
+    void loadDevices(false)
     const timer = setInterval(() => {
       setTickNow(Math.floor(Date.now() / 1000))
-      void loadDevices()
+      void loadDevices(true)
     }, 30000)
     return () => clearInterval(timer)
   }, [auth?.authenticated, loadDevices])
@@ -103,7 +93,7 @@ export function App() {
       setRateHistory((prev) => [...prev.slice(-59), { time: label, down: snap.total_down_bps, up: snap.total_up_bps }])
     }
 
-    api.liveSnapshot().then(pushSample).catch(() => {})
+    trafficApi.liveSnapshot().then(pushSample).catch(() => {})
 
     const connect = () => {
       if (closed) return
@@ -138,7 +128,6 @@ export function App() {
       return { deviceId: selectedDeviceId, scope, from: r.from, to: r.to }
     }
     const r = presetToRange(preset)
-    // Keep stable `to` driven by tickNow/preset switches so child effects don't jitter every second
     void tickNow
     return { deviceId: selectedDeviceId, scope, from: r.from, to: r.to }
   }, [selectedDeviceId, scope, preset, customDay, tickNow])
@@ -152,7 +141,7 @@ export function App() {
   }
 
   const handleLogout = async () => {
-    await api.authLogout().catch(() => {})
+    await authApi.logout().catch(() => {})
     await checkAuth()
   }
 
@@ -170,7 +159,10 @@ export function App() {
 
   if (!auth) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#09090b] text-xs text-zinc-400">
+      <div
+        className="flex min-h-screen items-center justify-center text-xs"
+        style={{ backgroundColor: 'var(--cl-bg-page)', color: 'var(--cl-text-muted)' }}
+      >
         正在加载 ClashLens...
       </div>
     )
@@ -197,8 +189,6 @@ export function App() {
       customDay={customDay}
       onClearCustomDay={() => setCustomDay(null)}
       live={live}
-      isDark={isDark}
-      onToggleTheme={() => setIsDark((d) => !d)}
       kiosk={kiosk}
       onToggleKiosk={handleToggleKiosk}
       localMode={Boolean(auth.local_mode)}
@@ -209,7 +199,6 @@ export function App() {
           query={query}
           live={live}
           rateHistory={rateHistory}
-          isDark={isDark}
           onSelectDay={(dateStr) => setCustomDay(dateStr)}
           onOpenApp={openAppDetail}
           onOpenDomain={openDomainDetail}
@@ -220,13 +209,11 @@ export function App() {
           query={query}
           initialMode={explorerMode}
           initialTarget={explorerTarget}
-          isDark={isDark}
         />
       )}
       {activeTab === 'nodes' && (
         <NodesQuotaPage
           query={query}
-          isDark={isDark}
           onOpenSettings={() => {
             setSettingsSubTab('settings')
             setActiveTab('devices')
@@ -238,14 +225,13 @@ export function App() {
         <LiveMonitorPage
           live={live}
           rateHistory={rateHistory}
-          isDark={isDark}
           onOpenApp={openAppDetail}
         />
       )}
       {activeTab === 'devices' && (
         <DevicesSettingsPage
           devices={devices}
-          onDevicesChanged={() => void loadDevices()}
+          onDevicesChanged={() => void loadDevices(true)}
           initialSubTab={settingsSubTab}
           localMode={Boolean(auth.local_mode)}
         />

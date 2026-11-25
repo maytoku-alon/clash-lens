@@ -134,13 +134,15 @@ type DeviceInfo struct {
 	LiveConns       int    `json:"live_conns"`
 	TodayBytes      int64  `json:"today_bytes"`
 	TodayProxyBytes int64  `json:"today_proxy_bytes"`
+	DashboardURL    string `json:"dashboard_url,omitempty"`
 }
 
 // CreateDeviceRequest creates a new monitoring device.
 type CreateDeviceRequest struct {
-	Name string `json:"name"`
-	OS   string `json:"os"`
-	Icon string `json:"icon"`
+	Name         string `json:"name"`
+	OS           string `json:"os"`
+	Icon         string `json:"icon"`
+	DashboardURL string `json:"dashboard_url,omitempty"`
 }
 
 // CreateDeviceResponse returns the created device and its one-time plaintext token.
@@ -151,9 +153,10 @@ type CreateDeviceResponse struct {
 
 // UpdateDeviceRequest updates device display metadata.
 type UpdateDeviceRequest struct {
-	Name string `json:"name"`
-	OS   string `json:"os"`
-	Icon string `json:"icon"`
+	Name         string `json:"name"`
+	OS           string `json:"os"`
+	Icon         string `json:"icon"`
+	DashboardURL string `json:"dashboard_url,omitempty"`
 }
 
 // NodeMultiplierRule assigns a billing multiplier to matching egress node names.
@@ -509,6 +512,7 @@ type LiveDeviceSnapshot struct {
 	FindProcessMode string `json:"find_process_mode"`
 	InboundMode     string `json:"inbound_mode"`
 	MihomoVersion   string `json:"mihomo_version"`
+	DashboardURL    string `json:"dashboard_url,omitempty"`
 }
 
 // LiveHubSnapshot is broadcast every ~2s over /api/v1/ws/live to dashboard UI clients.
@@ -539,6 +543,7 @@ type BackupDeviceRecord struct {
 	SnifferEnabled  bool   `json:"sniffer_enabled"`
 	FindProcessMode string `json:"find_process_mode,omitempty"`
 	InboundMode     string `json:"inbound_mode,omitempty"`
+	DashboardURL    string `json:"dashboard_url,omitempty"`
 }
 
 // BackupMinuteTotalRow stores one minute total row scoped to a device ID for export/import.

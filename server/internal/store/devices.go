@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	neturl "net/url"
 	"runtime"
 	"strings"
 	"time"
@@ -18,7 +19,27 @@ const (
 	settingLocalDeviceToken = "local_device_token"
 )
 
-var ErrDeviceNotFound = errors.New("device not found")
+var (
+	ErrDeviceNotFound      = errors.New("device not found")
+	ErrInvalidDashboardURL = errors.New("dashboard_url must use http:// or https://")
+)
+
+// sanitizeDashboardURL validates an optional external management panel URL to prevent non-HTTP scheme injection.
+func sanitizeDashboardURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+	u, err := neturl.Parse(trimmed)
+	if err != nil {
+		return "", ErrInvalidDashboardURL
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if (scheme != "http" && scheme != "https") || strings.TrimSpace(u.Host) == "" {
+		return "", ErrInvalidDashboardURL
+	}
+	return trimmed, nil
+}
 
 // EnsureLocalDevice returns or initializes a persistent local device and token for standalone --local mode.
 func (s *Store) EnsureLocalDevice(ctx context.Context, name, osName string) (protocol.DeviceInfo, string, error) {
@@ -72,6 +93,10 @@ func (s *Store) CreateDevice(ctx context.Context, req protocol.CreateDeviceReque
 	if icon == "" {
 		icon = defaultIconForOS(osName)
 	}
+	dashboardURL, err := sanitizeDashboardURL(req.DashboardURL)
+	if err != nil {
+		return protocol.DeviceInfo{}, "", err
+	}
 
 	rawToken, tokenHash, prefix, err := auth.GenerateDeviceToken()
 	if err != nil {
@@ -82,20 +107,21 @@ func (s *Store) CreateDevice(ctx context.Context, req protocol.CreateDeviceReque
 	now := time.Now().Unix()
 
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO devices (id, name, os, icon, token_hash, token_prefix, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, id, name, osName, icon, tokenHash, prefix, now)
+		INSERT INTO devices (id, name, os, icon, token_hash, token_prefix, created_at, dashboard_url)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, id, name, osName, icon, tokenHash, prefix, now, dashboardURL)
 	if err != nil {
 		return protocol.DeviceInfo{}, "", err
 	}
 
 	return protocol.DeviceInfo{
-		ID:          id,
-		Name:        name,
-		OS:          osName,
-		Icon:        icon,
-		TokenPrefix: prefix,
-		CreatedAt:   now,
+		ID:           id,
+		Name:         name,
+		OS:           osName,
+		Icon:         icon,
+		TokenPrefix:  prefix,
+		CreatedAt:    now,
+		DashboardURL: dashboardURL,
 	}, rawToken, nil
 }
 
@@ -106,12 +132,12 @@ func (s *Store) GetDeviceByTokenHash(ctx context.Context, tokenHash string) (pro
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, name, os, icon, token_prefix, created_at, last_seen_at,
 		       mihomo_version, tun_enabled, sniffer_enabled, find_process_mode,
-		       inbound_mode, live_up_bps, live_down_bps, live_conns
+		       inbound_mode, live_up_bps, live_down_bps, live_conns, dashboard_url
 		FROM devices WHERE token_hash = ?
 	`, tokenHash).Scan(
 		&d.ID, &d.Name, &d.OS, &d.Icon, &d.TokenPrefix, &d.CreatedAt, &d.LastSeenAt,
 		&d.MihomoVersion, &tunInt, &sniffInt, &d.FindProcessMode,
-		&d.InboundMode, &d.LiveUpBps, &d.LiveDownBps, &d.LiveConns,
+		&d.InboundMode, &d.LiveUpBps, &d.LiveDownBps, &d.LiveConns, &d.DashboardURL,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return d, ErrDeviceNotFound
@@ -133,7 +159,7 @@ func (s *Store) ListDevices(ctx context.Context, tzOffsetMin int, onlineThreshol
 		SELECT
 			d.id, d.name, d.os, d.icon, d.token_prefix, d.created_at, d.last_seen_at,
 			d.mihomo_version, d.tun_enabled, d.sniffer_enabled, d.find_process_mode,
-			d.inbound_mode, d.live_up_bps, d.live_down_bps, d.live_conns,
+			d.inbound_mode, d.live_up_bps, d.live_down_bps, d.live_conns, d.dashboard_url,
 			COALESCE(ds.proxy_up + ds.proxy_down + ds.direct_up + ds.direct_down, 0) AS today_bytes,
 			COALESCE(ds.proxy_up + ds.proxy_down, 0) AS today_proxy_bytes
 		FROM devices d
@@ -152,7 +178,7 @@ func (s *Store) ListDevices(ctx context.Context, tzOffsetMin int, onlineThreshol
 		if err := rows.Scan(
 			&d.ID, &d.Name, &d.OS, &d.Icon, &d.TokenPrefix, &d.CreatedAt, &d.LastSeenAt,
 			&d.MihomoVersion, &tunInt, &sniffInt, &d.FindProcessMode,
-			&d.InboundMode, &d.LiveUpBps, &d.LiveDownBps, &d.LiveConns,
+			&d.InboundMode, &d.LiveUpBps, &d.LiveDownBps, &d.LiveConns, &d.DashboardURL,
 			&d.TodayBytes, &d.TodayProxyBytes,
 		); err != nil {
 			return nil, err
@@ -165,7 +191,7 @@ func (s *Store) ListDevices(ctx context.Context, tzOffsetMin int, onlineThreshol
 	return out, rows.Err()
 }
 
-// UpdateDevice updates display fields of a device.
+// UpdateDevice updates display fields and optional dashboard management URL of a device.
 func (s *Store) UpdateDevice(ctx context.Context, id string, req protocol.UpdateDeviceRequest) (protocol.DeviceInfo, error) {
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -176,14 +202,19 @@ func (s *Store) UpdateDevice(ctx context.Context, id string, req protocol.Update
 	if icon == "" && osName != "" {
 		icon = defaultIconForOS(osName)
 	}
+	dashboardURL, err := sanitizeDashboardURL(req.DashboardURL)
+	if err != nil {
+		return protocol.DeviceInfo{}, err
+	}
 
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE devices
 		SET name = ?,
 		    os = CASE WHEN ? != '' THEN ? ELSE os END,
-		    icon = CASE WHEN ? != '' THEN ? ELSE icon END
+		    icon = CASE WHEN ? != '' THEN ? ELSE icon END,
+		    dashboard_url = ?
 		WHERE id = ?
-	`, name, osName, osName, icon, icon, id)
+	`, name, osName, osName, icon, icon, dashboardURL, id)
 	if err != nil {
 		return protocol.DeviceInfo{}, err
 	}
@@ -200,12 +231,12 @@ func (s *Store) UpdateDevice(ctx context.Context, id string, req protocol.Update
 	err = s.db.QueryRowContext(ctx, `
 		SELECT id, name, os, icon, token_prefix, created_at, last_seen_at,
 		       mihomo_version, tun_enabled, sniffer_enabled, find_process_mode,
-		       inbound_mode, live_up_bps, live_down_bps, live_conns
+		       inbound_mode, live_up_bps, live_down_bps, live_conns, dashboard_url
 		FROM devices WHERE id = ?
 	`, id).Scan(
 		&d.ID, &d.Name, &d.OS, &d.Icon, &d.TokenPrefix, &d.CreatedAt, &d.LastSeenAt,
 		&d.MihomoVersion, &tunInt, &sniffInt, &d.FindProcessMode,
-		&d.InboundMode, &d.LiveUpBps, &d.LiveDownBps, &d.LiveConns,
+		&d.InboundMode, &d.LiveUpBps, &d.LiveDownBps, &d.LiveConns, &d.DashboardURL,
 	)
 	if err != nil {
 		return protocol.DeviceInfo{}, err

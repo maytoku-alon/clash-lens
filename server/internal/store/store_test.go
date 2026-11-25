@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -512,5 +513,87 @@ func TestBackupExportAndIdempotentMerge(t *testing.T) {
 	}
 	if ov.Quota.MonthlyQuotaGB != 500 {
 		t.Fatalf("expected merged MonthlyQuotaGB=500, got %v", ov.Quota.MonthlyQuotaGB)
+	}
+}
+
+func TestDeviceDashboardURLAndMigration(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "legacy-dev.db")
+
+	// Create a legacy devices table missing the dashboard_url column.
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw sqlite: %v", err)
+	}
+	if _, err := rawDB.Exec(`
+		CREATE TABLE devices (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			os TEXT NOT NULL,
+			icon TEXT NOT NULL DEFAULT 'monitor',
+			token_hash TEXT NOT NULL UNIQUE,
+			token_prefix TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			last_seen_at INTEGER NOT NULL DEFAULT 0,
+			mihomo_version TEXT NOT NULL DEFAULT '',
+			tun_enabled INTEGER NOT NULL DEFAULT 0,
+			sniffer_enabled INTEGER NOT NULL DEFAULT 0,
+			find_process_mode TEXT NOT NULL DEFAULT '',
+			inbound_mode TEXT NOT NULL DEFAULT '',
+			live_up_bps INTEGER NOT NULL DEFAULT 0,
+			live_down_bps INTEGER NOT NULL DEFAULT 0,
+			live_conns INTEGER NOT NULL DEFAULT 0
+		);
+	`); err != nil {
+		t.Fatalf("create legacy devices table: %v", err)
+	}
+	_ = rawDB.Close()
+
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("store.Open legacy DB: %v", err)
+	}
+	defer st.Close()
+
+	// Invalid scheme must be rejected.
+	if _, _, err := st.CreateDevice(ctx, protocol.CreateDeviceRequest{
+		Name:         "XSS Probe",
+		OS:           "linux",
+		DashboardURL: "javascript:alert(1)",
+	}); !errors.Is(err, store.ErrInvalidDashboardURL) {
+		t.Fatalf("expected ErrInvalidDashboardURL, got %v", err)
+	}
+
+	// Valid HTTP/HTTPS dashboard_url persists cleanly.
+	dev, _, err := st.CreateDevice(ctx, protocol.CreateDeviceRequest{
+		Name:         "Cloud Server",
+		OS:           "linux",
+		DashboardURL: "https://panel.example.com/ui/",
+	})
+	if err != nil {
+		t.Fatalf("CreateDevice with dashboard_url: %v", err)
+	}
+	if dev.DashboardURL != "https://panel.example.com/ui/" {
+		t.Fatalf("unexpected DashboardURL=%q", dev.DashboardURL)
+	}
+
+	updated, err := st.UpdateDevice(ctx, dev.ID, protocol.UpdateDeviceRequest{
+		Name:         "Cloud Node",
+		OS:           "linux",
+		DashboardURL: "http://127.0.0.1:9090/ui",
+	})
+	if err != nil {
+		t.Fatalf("UpdateDevice: %v", err)
+	}
+	if updated.DashboardURL != "http://127.0.0.1:9090/ui" {
+		t.Fatalf("updated DashboardURL=%q", updated.DashboardURL)
+	}
+
+	archive, err := st.ExportBackup(ctx, "0.2.0")
+	if err != nil {
+		t.Fatalf("ExportBackup: %v", err)
+	}
+	if len(archive.Devices) != 1 || archive.Devices[0].DashboardURL != "http://127.0.0.1:9090/ui" {
+		t.Fatalf("backup device missing DashboardURL: %+v", archive.Devices)
 	}
 }

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as echarts from 'echarts'
 import { Crosshair, Search, X } from 'lucide-react'
-import { EChartBox } from './EChartBox'
-import { api } from '../api/client'
+import { maxStackedSeriesValue } from '../adapters/trafficAdapter'
+import { trafficApi } from '../api/trafficApi'
+import { buildByteValueAxis, buildChartTheme } from '../theme/chartAdapter'
+import { useTheme } from '../theme/ThemeProvider'
 import type { BurstEvent, GroupByDim, TimeseriesResponse, TrafficScope } from '../types/api'
 import { formatBytes, formatFullTime, formatTimeBucket } from '../utils/format'
-
-const PALETTE = ['#10b981', '#06b6d4', '#8b5cf6', '#f59e0b', '#ec4899', '#6366f1', '#14b8a6', '#71717a']
+import { EChartBox } from './EChartBox'
 
 const DIM_TABS: { key: GroupByDim; label: string }[] = [
   { key: 'process', label: '按应用' },
@@ -22,7 +23,6 @@ interface TrafficStackChartProps {
   onGroupByChange: (dim: GroupByDim) => void
   deviceId: string
   scope: TrafficScope
-  isDark: boolean
   onInspectApp: (appName: string) => void
 }
 
@@ -32,9 +32,11 @@ export function TrafficStackChart({
   onGroupByChange,
   deviceId,
   scope,
-  isDark,
   onInspectApp,
 }: TrafficStackChartProps) {
+  const { tokens, colorMode } = useTheme()
+  const chartTheme = useMemo(() => buildChartTheme(tokens, colorMode), [tokens, colorMode])
+
   const chartRef = useRef<echarts.ECharts | null>(null)
   const [brushMode, setBrushMode] = useState(false)
   const [inspectedRange, setInspectedRange] = useState<{ from: number; to: number } | null>(null)
@@ -89,7 +91,7 @@ export function TrafficStackChart({
     }, 150)
 
     try {
-      const res = await api.bursts(
+      const res = await trafficApi.bursts(
         { deviceId: deviceIdRef.current, scope: scopeRef.current, from: fromTS, to: toTS },
         10,
       )
@@ -129,19 +131,17 @@ export function TrafficStackChart({
     const interval = data?.interval ?? 'hour'
     const labels = timestamps.map((ts) => formatTimeBucket(ts, interval))
     const seriesList = data?.series ?? []
-
-    const textColor = isDark ? '#a1a1aa' : '#64748b'
-    const gridLine = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)'
+    const peakStacked = maxStackedSeriesValue(seriesList)
 
     return {
-      color: PALETTE,
+      color: chartTheme.palette,
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
         confine: true,
-        backgroundColor: isDark ? '#141419' : '#ffffff',
-        borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.12)',
-        textStyle: { color: isDark ? '#fafafa' : '#0f172a', fontSize: 12 },
+        backgroundColor: chartTheme.tooltip.backgroundColor,
+        borderColor: chartTheme.tooltip.borderColor,
+        textStyle: chartTheme.tooltip.textStyle,
         formatter: (params: unknown) => {
           const list = Array.isArray(params) ? params : []
           if (list.length === 0) return ''
@@ -152,7 +152,7 @@ export function TrafficStackChart({
             .map((item: { marker?: string; seriesName?: string; value?: number }) => {
               const v = Number(item.value || 0)
               total += v
-              return `<div style="display:flex;justify-content:space-between;gap:18px;font-family:ui-monospace,monospace;">
+              return `<div style="display:flex;justify-content:space-between;gap:18px;font-family:var(--cl-font-mono);">
                 <span>${item.marker || ''}${item.seriesName || ''}</span>
                 <span style="font-weight:600;">${formatBytes(v)}</span>
               </div>`
@@ -160,11 +160,11 @@ export function TrafficStackChart({
             .join('')
           return `
             <div style="min-width:190px;">
-              <div style="font-weight:600;margin-bottom:4px;font-family:ui-monospace,monospace;">${first.axisValueLabel || ''}</div>
-              ${rows || '<div style="color:#71717a;">无流量记录</div>'}
-              <div style="border-top:1px solid ${gridLine};margin-top:5px;padding-top:4px;display:flex;justify-content:space-between;font-family:ui-monospace,monospace;">
-                <span style="color:#a1a1aa;">时段合计</span>
-                <span style="font-weight:700;color:#10b981;">${formatBytes(total)}</span>
+              <div style="font-weight:600;margin-bottom:4px;font-family:var(--cl-font-mono);">${first.axisValueLabel || ''}</div>
+              ${rows || `<div style="color:${chartTheme.textMuted};">无流量记录</div>`}
+              <div style="border-top:1px solid ${chartTheme.tooltip.borderColor};margin-top:5px;padding-top:4px;display:flex;justify-content:space-between;font-family:var(--cl-font-mono);">
+                <span style="color:${chartTheme.textMuted};">时段合计</span>
+                <span style="font-weight:700;color:${chartTheme.accentPrimary};">${formatBytes(total)}</span>
               </div>
             </div>
           `
@@ -173,7 +173,7 @@ export function TrafficStackChart({
       legend: {
         type: 'scroll',
         bottom: 0,
-        textStyle: { color: textColor, fontSize: 11 },
+        textStyle: chartTheme.legendTextStyle,
         itemWidth: 10,
         itemHeight: 10,
       },
@@ -184,41 +184,34 @@ export function TrafficStackChart({
         toolbox: [],
         brushStyle: {
           borderWidth: 1,
-          color: 'rgba(16, 185, 129, 0.14)',
-          borderColor: 'rgba(16, 185, 129, 0.75)',
+          color: chartTheme.accentSoft,
+          borderColor: chartTheme.accentPrimary,
         },
       },
       grid: {
         top: 16,
-        left: 56,
+        left: 58,
         right: 16,
         bottom: 42,
       },
       xAxis: {
         type: 'category',
         data: labels,
-        axisLine: { lineStyle: { color: gridLine } },
-        axisLabel: { color: textColor, fontSize: 11 },
+        axisLine: chartTheme.axisLine,
+        axisLabel: { color: chartTheme.axisLabelColor, fontSize: 11 },
       },
-      yAxis: {
-        type: 'value',
-        splitLine: { lineStyle: { color: gridLine } },
-        axisLabel: {
-          color: textColor,
-          fontSize: 11,
-          formatter: (val: number) => formatBytes(val, 0),
-        },
-      },
+      yAxis: buildByteValueAxis(peakStacked, chartTheme, 11),
       series: seriesList.map((s) => ({
         name: s.label || s.name,
         type: 'bar',
         stack: 'total',
         barMaxWidth: 28,
+        itemStyle: { borderRadius: [2, 2, 0, 0] },
         emphasis: { focus: 'series' },
         data: s.values,
       })),
     }
-  }, [data, isDark])
+  }, [data, chartTheme])
 
   const handleReady = (chart: echarts.ECharts) => {
     chartRef.current = chart
@@ -252,7 +245,7 @@ export function TrafficStackChart({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">分时流量分布与突发溯源</h2>
-          <p className="text-xs text-[var(--cl-muted)]">
+          <p className="text-xs text-[var(--cl-text-muted)]">
             点击任意柱状时段，或启用框选拖拽查看该时间段的精确进程与网站消耗
           </p>
         </div>
@@ -264,9 +257,8 @@ export function TrafficStackChart({
                 type="button"
                 key={t.key}
                 onClick={() => onGroupByChange(t.key)}
-                className={`cl-segment-item ${
-                  groupBy === t.key ? 'cl-segment-item-active !text-emerald-400' : ''
-                }`}
+                className={`cl-segment-item ${groupBy === t.key ? 'cl-segment-item-active' : ''}`}
+                style={groupBy === t.key ? { color: 'var(--cl-accent-primary)' } : undefined}
               >
                 {t.label}
               </button>
@@ -278,7 +270,7 @@ export function TrafficStackChart({
             onClick={() => setBrushMode((v) => !v)}
             className={brushMode ? 'cl-btn-accent' : 'cl-btn-secondary'}
           >
-            <Crosshair className="h-3.5 w-3.5" />
+            <Crosshair className="h-3.5 w-3.5" strokeWidth={1.6} />
             {brushMode ? '框选中（拖拽图表）' : '框选溯源'}
           </button>
         </div>
@@ -287,23 +279,37 @@ export function TrafficStackChart({
       <EChartBox option={option} className="h-[290px] w-full" onChartReady={handleReady} />
 
       {inspectedRange && (
-        <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5">
+        <div
+          className="mt-4 rounded-xl border p-3.5"
+          style={{
+            borderColor: 'var(--cl-border-focus)',
+            backgroundColor: 'var(--cl-accent-soft)',
+          }}
+        >
           <div className="mb-2.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs">
-              <Search className="h-3.5 w-3.5 text-emerald-500" />
-              <span className="font-semibold text-emerald-400">时段流量溯源</span>
-              <span className="font-mono tabular-nums text-[var(--cl-muted)]">
+              <Search className="h-3.5 w-3.5" style={{ color: 'var(--cl-accent-primary)' }} />
+              <span className="font-semibold" style={{ color: 'var(--cl-accent-primary)' }}>
+                时段流量溯源
+              </span>
+              <span className="font-mono tabular-nums text-[var(--cl-text-muted)]">
                 {formatFullTime(inspectedRange.from)} → {formatFullTime(inspectedRange.to)}
               </span>
               {showSlowLoading && (
-                <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px]"
+                  style={{
+                    backgroundColor: 'var(--cl-accent-soft)',
+                    color: 'var(--cl-accent-primary)',
+                  }}
+                >
                   查询中...
                 </span>
               )}
             </div>
             <button
               onClick={clearInspection}
-              className="rounded p-1 text-[var(--cl-muted)] hover:bg-white/10 hover:text-[var(--cl-text)]"
+              className="rounded p-1 text-[var(--cl-text-muted)] hover:bg-[var(--cl-bg-surface-hover)] hover:text-[var(--cl-text-primary)]"
               title="关闭溯源面板"
             >
               <X className="h-3.5 w-3.5" />
@@ -321,20 +327,30 @@ export function TrafficStackChart({
                   <button
                     key={`${item.bucket_ts}-${item.process_display}-${item.root_domain}-${idx}`}
                     onClick={() => onInspectApp(item.process_display)}
-                    className="flex flex-col gap-1 rounded-lg border border-[var(--cl-border)] bg-[var(--cl-card)] p-2.5 text-left transition hover:border-emerald-500/40"
+                    className="flex cursor-pointer flex-col gap-1 rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
+                    style={{
+                      borderColor: 'var(--cl-border-subtle)',
+                      backgroundColor: 'var(--cl-bg-surface)',
+                    }}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-xs font-semibold">{item.process_display}</span>
-                      <span className="font-mono text-xs font-bold tabular-nums text-emerald-400">
+                      <span
+                        className="font-mono text-xs font-bold tabular-nums"
+                        style={{ color: 'var(--cl-accent-primary)' }}
+                      >
                         {formatBytes(item.total_bytes)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--cl-muted)]">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--cl-text-muted)]">
                       <span className="truncate">
                         {item.root_domain}
                         {item.service_tag ? ` · ${item.service_tag}` : ''}
                       </span>
-                      <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px]">
+                      <span
+                        className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]"
+                        style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
+                      >
                         {item.route_type === 'DIRECT' ? 'DIRECT' : item.egress_node}
                       </span>
                     </div>
@@ -347,13 +363,17 @@ export function TrafficStackChart({
                   {[0, 1, 2, 3, 4, 5].map((n) => (
                     <div
                       key={n}
-                      className="h-[58px] animate-pulse rounded-lg border border-[var(--cl-border)] bg-[var(--cl-card)]/60"
+                      className="h-[58px] animate-pulse rounded-lg border"
+                      style={{
+                        borderColor: 'var(--cl-border-subtle)',
+                        backgroundColor: 'var(--cl-bg-surface)',
+                      }}
                     />
                   ))}
                 </div>
               ) : null
             ) : (
-              <div className="flex h-[124px] items-center justify-center text-xs text-[var(--cl-muted)]">
+              <div className="flex h-[124px] items-center justify-center text-xs text-[var(--cl-text-muted)]">
                 该时段暂无记录明细。
               </div>
             )}

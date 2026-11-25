@@ -1,33 +1,109 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark (&:where(.dark, .dark *, [data-mode="dark"], [data-mode="dark"] *));
 
 @layer base {
-  :root {
-    --cl-bg: #f8fafc;
-    --cl-surface: #ffffff;
-    --cl-card: #ffffff;
-    --cl-hover: #f1f5f9;
-    --cl-border: rgba(15, 23, 42, 0.09);
-    --cl-text: #0f172a;
-    --cl-muted: #64748b;
+  :root,
+  [data-mode="light"] {
+    --cl-bg-page: #f8fafc;
+    --cl-bg-sidebar: #ffffff;
+    --cl-bg-surface: #ffffff;
+    --cl-bg-surface-hover: #f1f5f9;
+    --cl-border-subtle: rgba(15, 23, 42, 0.09);
+    --cl-border-focus: rgba(16, 185, 129, 0.5);
+    --cl-text-primary: #0f172a;
+    --cl-text-secondary: #334155;
+    --cl-text-muted: #64748b;
+    --cl-accent-primary: #10b981;
+    --cl-accent-soft: rgba(16, 185, 129, 0.12);
+    --cl-status-success: #059669;
+    --cl-status-warning: #d97706;
+    --cl-status-danger: #e11d48;
+    --cl-font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", sans-serif;
+    --cl-font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --cl-font-size-base: 14px;
+
+    --cl-bg: var(--cl-bg-page);
+    --cl-surface: var(--cl-bg-sidebar);
+    --cl-card: var(--cl-bg-surface);
+    --cl-hover: var(--cl-bg-surface-hover);
+    --cl-border: var(--cl-border-subtle);
+    --cl-text: var(--cl-text-primary);
+    --cl-muted: var(--cl-text-muted);
   }
 
-  .dark {
-    --cl-bg: #09090b;
-    --cl-surface: #0f0f13;
-    --cl-card: #141419;
-    --cl-hover: #1c1c23;
-    --cl-border: rgba(255, 255, 255, 0.08);
-    --cl-text: #fafafa;
-    --cl-muted: #a1a1aa;
+  .dark,
+  [data-mode="dark"] {
+    --cl-bg-page: #09090b;
+    --cl-bg-sidebar: #0f0f13;
+    --cl-bg-surface: #141419;
+    --cl-bg-surface-hover: #1c1c23;
+    --cl-border-subtle: rgba(255, 255, 255, 0.08);
+    --cl-border-focus: rgba(16, 185, 129, 0.45);
+    --cl-text-primary: #fafafa;
+    --cl-text-secondary: #d4d4d8;
+    --cl-text-muted: #a1a1aa;
+    --cl-accent-primary: #10b981;
+    --cl-accent-soft: rgba(16, 185, 129, 0.12);
+    --cl-status-success: #34d399;
+    --cl-status-warning: #f59e0b;
+    --cl-status-danger: #f43f5e;
+  }
+
+  /* Anti-FOUC CSS fallback before React ThemeProvider mounts */
+  [data-theme="obsidian-plum"][data-mode="dark"] {
+    --cl-bg-page: #0B0A0F;
+    --cl-bg-sidebar: #111017;
+    --cl-bg-surface: #16151F;
+    --cl-bg-surface-hover: #1E1C2A;
+    --cl-border-subtle: rgba(255, 255, 255, 0.06);
+    --cl-border-focus: rgba(167, 139, 250, 0.35);
+    --cl-text-primary: #E6E4EE;
+    --cl-text-secondary: #9E9AB0;
+    --cl-text-muted: #67637A;
+    --cl-accent-primary: #A78BFA;
+    --cl-accent-soft: rgba(167, 139, 250, 0.12);
+    --cl-status-success: #6EE7B7;
+    --cl-status-warning: #FCD34D;
+    --cl-status-danger: #FDA4AF;
+  }
+
+  [data-theme="obsidian-plum"][data-mode="light"] {
+    --cl-bg-page: #F7F6F3;
+    --cl-bg-sidebar: #EFECE6;
+    --cl-bg-surface: #FFFFFF;
+    --cl-bg-surface-hover: #F3F1EC;
+    --cl-border-subtle: rgba(24, 22, 34, 0.08);
+    --cl-border-focus: rgba(124, 58, 237, 0.30);
+    --cl-text-primary: #1C1A26;
+    --cl-text-secondary: #5E5A70;
+    --cl-text-muted: #8F8BA3;
+    --cl-accent-primary: #7C3AED;
+    --cl-accent-soft: rgba(124, 58, 237, 0.10);
+    --cl-status-success: #059669;
+    --cl-status-warning: #D97706;
+    --cl-status-danger: #E11D48;
+  }
+
+  html {
+    font-size: var(--cl-font-size-base, 14px);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   body {
-    background-color: var(--cl-bg);
-    color: var(--cl-text);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background-color: var(--cl-bg-page);
+    color: var(--cl-text-primary);
+    font-family: var(--cl-font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
+}
+
+.font-mono {
+  font-family: var(--cl-font-mono);
 }
 
 .tabular-nums {
@@ -35,13 +111,147 @@
 }
 
 .cl-card {
-  background-color: var(--cl-card);
-  border: 1px solid var(--cl-border);
+  background-color: var(--cl-bg-surface);
+  border: 1px solid var(--cl-border-subtle);
+}
+
+.cl-list-item {
+  background-color: var(--cl-bg-sidebar);
+  border-color: var(--cl-border-subtle);
+}
+
+/* Obsidian Plum: Claude Code minimal de-bordered skeleton & micro-terminal cues */
+[data-theme="obsidian-plum"] .cl-list-stack {
+  gap: 0;
+}
+[data-theme="obsidian-plum"] .cl-list-stack > * + * {
+  margin-top: 0;
+}
+[data-theme="obsidian-plum"] .cl-list-item {
+  border-width: 0;
+  border-bottom: 1px solid var(--cl-border-subtle);
+  border-radius: 0;
+  background-color: transparent;
+  padding-inline: 0.4rem;
+}
+[data-theme="obsidian-plum"] .cl-list-item:last-child {
+  border-bottom: 0;
+}
+[data-theme="obsidian-plum"] .cl-list-item:hover {
+  background-color: var(--cl-bg-surface-hover);
+  border-radius: 6px;
+}
+
+[data-theme="obsidian-plum"] .cl-burst-meta::before {
+  content: "⎿";
+  color: var(--cl-text-muted);
+  margin-right: 0.25rem;
+  font-family: var(--cl-font-mono);
+}
+
+[data-theme="obsidian-plum"][data-mode="dark"] .cl-btn-primary {
+  background-color: var(--cl-accent-primary);
+  color: #0b0a0f;
+  box-shadow: none;
+}
+[data-theme="obsidian-plum"][data-mode="dark"] .cl-btn-primary:hover {
+  filter: brightness(1.06);
+  background-color: var(--cl-accent-primary);
+}
+
+[data-theme="obsidian-plum"][data-mode="light"] .cl-btn-primary {
+  background-color: var(--cl-accent-primary);
+  color: #ffffff;
+  box-shadow: none;
+}
+[data-theme="obsidian-plum"][data-mode="light"] .cl-btn-primary:hover {
+  filter: brightness(0.95);
+  background-color: var(--cl-accent-primary);
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 1px solid var(--cl-border-focus);
+  outline-offset: 1px;
 }
 
 .cl-surface {
-  background-color: var(--cl-surface);
-  border-color: var(--cl-border);
+  background-color: var(--cl-bg-sidebar);
+  border-color: var(--cl-border-subtle);
+}
+
+.cl-main-container {
+  max-width: 1600px;
+}
+
+[data-layout="bento"] .cl-main-container {
+  max-width: 1680px;
+}
+
+/* CSS Grid layout strategy: moves sections via grid-area without unmounting React instances */
+.cl-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  grid-template-areas:
+    "kpi"
+    "heatmap"
+    "timeseries"
+    "bursts"
+    "ranking";
+}
+
+.cl-area-kpi {
+  grid-area: kpi;
+  min-width: 0;
+}
+.cl-area-heatmap {
+  grid-area: heatmap;
+  min-width: 0;
+}
+.cl-area-timeseries {
+  grid-area: timeseries;
+  min-width: 0;
+}
+.cl-area-bursts {
+  grid-area: bursts;
+  min-width: 0;
+}
+.cl-area-ranking {
+  grid-area: ranking;
+  min-width: 0;
+}
+
+[data-layout="bento"] .cl-overview-grid {
+  grid-template-areas:
+    "kpi"
+    "timeseries"
+    "ranking"
+    "bursts"
+    "heatmap";
+}
+
+@media (min-width: 1024px) {
+  [data-layout="classic"] .cl-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+    grid-template-areas:
+      "kpi kpi"
+      "heatmap heatmap"
+      "timeseries timeseries"
+      "bursts ranking";
+  }
+}
+
+@media (min-width: 1280px) {
+  [data-layout="bento"] .cl-overview-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 1rem;
+    grid-template-areas:
+      "kpi kpi kpi kpi kpi kpi kpi kpi kpi kpi kpi kpi"
+      "timeseries timeseries timeseries timeseries timeseries timeseries timeseries timeseries ranking ranking ranking ranking"
+      "heatmap heatmap heatmap heatmap heatmap heatmap heatmap bursts bursts bursts bursts bursts";
+  }
 }
 
 @layer components {
@@ -65,73 +275,79 @@
 
   .cl-btn-secondary {
     @apply inline-flex h-7 items-center justify-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium leading-none tracking-[-0.01em] whitespace-nowrap transition cursor-pointer disabled:pointer-events-none disabled:opacity-45;
-    border-color: var(--cl-border);
-    background-color: var(--cl-surface);
-    color: var(--cl-text);
+    border-color: var(--cl-border-subtle);
+    background-color: var(--cl-bg-sidebar);
+    color: var(--cl-text-primary);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
   .cl-btn-secondary:hover {
-    background-color: var(--cl-hover);
+    background-color: var(--cl-bg-surface-hover);
   }
 
   .cl-btn-accent {
-    @apply inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/12 px-2.5 text-[12px] font-medium leading-none tracking-[-0.01em] text-emerald-500 whitespace-nowrap transition cursor-pointer hover:bg-emerald-500/20;
+    @apply inline-flex h-7 items-center justify-center gap-1.5 rounded-md border px-2.5 text-[12px] font-medium leading-none tracking-[-0.01em] whitespace-nowrap transition cursor-pointer;
+    border-color: var(--cl-border-focus);
+    background-color: var(--cl-accent-soft);
+    color: var(--cl-accent-primary);
+  }
+  .cl-btn-accent:hover {
+    filter: brightness(1.08);
   }
 
   .cl-segment {
     @apply inline-flex h-7 items-center gap-0.5 rounded-md border p-0.5;
-    border-color: var(--cl-border);
-    background-color: var(--cl-bg);
+    border-color: var(--cl-border-subtle);
+    background-color: var(--cl-bg-page);
   }
 
   .cl-segment-item {
     @apply inline-flex h-[22px] items-center justify-center gap-1.5 rounded-[4px] px-2 text-[11px] font-medium leading-none tracking-[-0.01em] whitespace-nowrap transition cursor-pointer;
-    color: var(--cl-muted);
+    color: var(--cl-text-muted);
   }
   .cl-segment-item:hover {
-    color: var(--cl-text);
+    color: var(--cl-text-primary);
   }
   .cl-segment-item-active {
-    background-color: var(--cl-card);
-    color: var(--cl-text);
+    background-color: var(--cl-bg-surface);
+    color: var(--cl-text-primary);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .cl-pill {
     @apply inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-[11.5px] font-medium leading-none tracking-[-0.01em] whitespace-nowrap transition cursor-pointer;
-    border-color: var(--cl-border);
-    background-color: var(--cl-surface);
-    color: var(--cl-muted);
+    border-color: var(--cl-border-subtle);
+    background-color: var(--cl-bg-sidebar);
+    color: var(--cl-text-muted);
   }
   .cl-pill:hover {
-    color: var(--cl-text);
-    background-color: var(--cl-hover);
+    color: var(--cl-text-primary);
+    background-color: var(--cl-bg-surface-hover);
   }
   .cl-pill-active {
-    border-color: rgba(16, 185, 129, 0.4);
-    background-color: rgba(16, 185, 129, 0.1);
-    color: #10b981;
+    border-color: var(--cl-border-focus);
+    background-color: var(--cl-accent-soft);
+    color: var(--cl-accent-primary);
   }
 
   .cl-icon-btn {
     @apply inline-flex h-7 w-7 items-center justify-center rounded-md border transition cursor-pointer;
-    border-color: var(--cl-border);
-    background-color: var(--cl-surface);
-    color: var(--cl-muted);
+    border-color: var(--cl-border-subtle);
+    background-color: var(--cl-bg-sidebar);
+    color: var(--cl-text-muted);
   }
   .cl-icon-btn:hover {
-    background-color: var(--cl-hover);
-    color: var(--cl-text);
+    background-color: var(--cl-bg-surface-hover);
+    color: var(--cl-text-primary);
   }
 
   .cl-input {
     @apply h-8 rounded-md border px-2.5 text-[12px] outline-none transition;
-    border-color: var(--cl-border);
-    background-color: var(--cl-bg);
-    color: var(--cl-text);
+    border-color: var(--cl-border-subtle);
+    background-color: var(--cl-bg-page);
+    color: var(--cl-text-primary);
   }
   .cl-input:focus {
-    border-color: rgba(16, 185, 129, 0.55);
+    border-color: var(--cl-border-focus);
   }
 }
 

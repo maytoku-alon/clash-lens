@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Activity, ArrowRight, Lock } from 'lucide-react'
-import { api } from '../api/client'
+import { authApi } from '../api/authApi'
 
 interface AuthGateProps {
   initialized: boolean
@@ -28,9 +28,9 @@ export function AuthGate({ initialized, onAuthenticated }: AuthGateProps) {
     setLoading(true)
     try {
       if (initialized) {
-        await api.authLogin(password)
+        await authApi.login(password)
       } else {
-        await api.authSetup(password)
+        await authApi.setup(password)
       }
       onAuthenticated()
     } catch (err) {
@@ -41,15 +41,34 @@ export function AuthGate({ initialized, onAuthenticated }: AuthGateProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#09090b] p-4 text-zinc-100">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#141419] p-7 shadow-2xl">
+    <div
+      className="flex min-h-screen items-center justify-center p-4"
+      style={{
+        backgroundColor: 'var(--cl-bg-page)',
+        color: 'var(--cl-text-primary)',
+      }}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border p-7 shadow-2xl"
+        style={{
+          backgroundColor: 'var(--cl-bg-surface)',
+          borderColor: 'var(--cl-border-subtle)',
+        }}
+      >
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-zinc-950">
-            <Activity className="h-5 w-5 stroke-[2.5]" />
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-xl border"
+            style={{
+              backgroundColor: 'var(--cl-accent-soft)',
+              borderColor: 'var(--cl-border-focus)',
+              color: 'var(--cl-accent-primary)',
+            }}
+          >
+            <Activity className="h-5 w-5" strokeWidth={2} />
           </div>
           <div>
             <h1 className="text-lg font-bold tracking-tight">ClashLens</h1>
-            <p className="text-xs text-zinc-400">多设备 Clash 流量透视与分析大屏</p>
+            <p className="text-xs text-[var(--cl-text-muted)]">多设备 Clash 流量透视与分析大屏</p>
           </div>
         </div>
 
@@ -57,7 +76,7 @@ export function AuthGate({ initialized, onAuthenticated }: AuthGateProps) {
           <h2 className="text-base font-semibold">
             {initialized ? '登录管理大屏' : '初始化管理员密码'}
           </h2>
-          <p className="mt-1 text-xs text-zinc-400">
+          <p className="mt-1 text-xs text-[var(--cl-text-muted)]">
             {initialized
               ? '输入管理员密码以查看设备流量详情与配置。'
               : '首次启动，请设置 ClashLens Web 控制台登录密码。'}
@@ -66,31 +85,35 @@ export function AuthGate({ initialized, onAuthenticated }: AuthGateProps) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-300">管理员密码</label>
+            <label className="mb-1.5 block text-xs font-medium text-[var(--cl-text-secondary)]">
+              管理员密码
+            </label>
             <div className="relative">
-              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--cl-text-muted)]" />
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="至少 4 位字符"
                 autoFocus
-                className="w-full rounded-xl border border-white/10 bg-[#09090b] py-2.5 pl-9 pr-3 text-sm text-zinc-100 outline-none transition focus:border-emerald-500"
+                className="cl-input !h-10 w-full !rounded-xl pl-9 pr-3 text-sm"
               />
             </div>
           </div>
 
           {!initialized && (
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-zinc-300">确认密码</label>
+              <label className="mb-1.5 block text-xs font-medium text-[var(--cl-text-secondary)]">
+                确认密码
+              </label>
               <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--cl-text-muted)]" />
                 <input
                   type="password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   placeholder="再次输入密码"
-                  className="w-full rounded-xl border border-white/10 bg-[#09090b] py-2.5 pl-9 pr-3 text-sm text-zinc-100 outline-none transition focus:border-emerald-500"
+                  className="cl-input !h-10 w-full !rounded-xl pl-9 pr-3 text-sm"
                 />
               </div>
             </div>
@@ -105,7 +128,7 @@ export function AuthGate({ initialized, onAuthenticated }: AuthGateProps) {
           <button
             type="submit"
             disabled={loading}
-            className="flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-zinc-100 px-4 text-[13px] font-medium tracking-[-0.01em] text-zinc-950 shadow-sm transition hover:bg-white disabled:opacity-50"
+            className="cl-btn-primary !h-9 w-full !rounded-lg text-[13px]"
           >
             <span>{loading ? '处理中...' : initialized ? '进入大屏' : '完成初始化并进入'}</span>
             <ArrowRight className="h-3.5 w-3.5" />

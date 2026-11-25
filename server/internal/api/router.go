@@ -350,6 +350,10 @@ func (s *Server) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dev, token, err := s.store.CreateDevice(r.Context(), req)
+	if errors.Is(err, store.ErrInvalidDashboardURL) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
