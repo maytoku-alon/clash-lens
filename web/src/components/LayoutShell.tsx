@@ -93,28 +93,28 @@ export function LayoutShell({
     <div className="flex min-h-screen bg-[var(--cl-bg-page)] text-[var(--cl-text-primary)]">
       {/* Left Navigation Rail */}
       {!kiosk && (
-        <aside className="cl-surface sticky top-0 flex h-screen w-16 shrink-0 flex-col justify-between border-r px-2 py-4 lg:w-56 lg:px-3">
+        <aside className="cl-surface sticky top-0 flex h-screen w-16 shrink-0 flex-col justify-between border-r px-2 py-5 lg:w-60 lg:px-3.5">
           <div>
-            <div className="mb-6 flex items-center gap-2.5 px-2">
+            <div className="mb-7 flex items-center gap-3 px-2">
               <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg shadow-sm"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm"
                 style={{
                   backgroundColor: 'var(--cl-accent-soft)',
                   color: 'var(--cl-accent-primary)',
                   border: '1px solid var(--cl-border-focus)',
                 }}
               >
-                <Activity className="h-4 w-4" strokeWidth={2} />
+                <Activity className="h-[18px] w-[18px]" strokeWidth={2} />
               </div>
               <div className="hidden lg:block">
-                <div className="text-sm font-bold tracking-tight">ClashLens</div>
-                <div className="text-[11px] text-[var(--cl-text-muted)]">
+                <div className="text-[15px] font-bold tracking-tight">ClashLens</div>
+                <div className="text-xs text-[var(--cl-text-muted)]">
                   {localMode ? '本地独立模式' : '流量透视监控'}
                 </div>
               </div>
             </div>
 
-            <nav className="space-y-1">
+            <nav className="space-y-2">
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon
                 const active = activeTab === item.key
@@ -123,19 +123,21 @@ export function LayoutShell({
                     type="button"
                     key={item.key}
                     onClick={() => onTabChange(item.key)}
-                    className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium leading-[1.4] tracking-[-0.01em] transition"
+                    className={`flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-lg px-2 text-[15px] font-medium leading-none tracking-[-0.01em] transition lg:justify-start lg:px-3.5 ${
+                      active
+                        ? ''
+                        : 'text-[var(--cl-text-secondary)] hover:bg-[var(--cl-bg-surface-hover)] hover:text-[var(--cl-text-primary)]'
+                    }`}
                     style={
                       active
                         ? {
                             backgroundColor: 'var(--cl-accent-soft)',
                             color: 'var(--cl-accent-primary)',
                           }
-                        : {
-                            color: 'var(--cl-text-muted)',
-                          }
+                        : undefined
                     }
                   >
-                    <Icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                    <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
                     <span className="hidden lg:inline">{item.label}</span>
                   </button>
                 )
@@ -148,9 +150,9 @@ export function LayoutShell({
               <button
                 type="button"
                 onClick={onLogout}
-                className="flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium tracking-[-0.01em] text-[var(--cl-text-muted)] transition hover:bg-rose-500/10 hover:text-rose-400"
+                className="flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-lg px-2 text-[14.5px] font-medium leading-none tracking-[-0.01em] text-[var(--cl-text-secondary)] transition hover:bg-rose-500/10 hover:text-rose-400 lg:justify-start lg:px-3.5"
               >
-                <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                <LogOut className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
                 <span className="hidden lg:inline">退出登录</span>
               </button>
             </div>
