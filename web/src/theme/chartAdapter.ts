@@ -1,5 +1,6 @@
+import * as echarts from 'echarts'
 import { computeNiceByteScale, computeNiceSpeedScale, formatAxisBytes, formatAxisSpeed } from '../adapters/trafficAdapter'
-import type { ColorMode, ThemeTokens } from './types'
+import type { ColorMode, ThemeChartEffects, ThemeTokens } from './types'
 
 export interface ChartThemeConfig {
   mode: ColorMode
@@ -28,8 +29,8 @@ export interface ChartThemeConfig {
   liveColors: {
     down: string
     up: string
-    downArea: string
-    upArea: string
+    downArea: string | echarts.graphic.LinearGradient
+    upArea: string | echarts.graphic.LinearGradient
   }
   sankeyColors: {
     app: string
@@ -37,6 +38,8 @@ export interface ChartThemeConfig {
     direct: string
     proxy: string
   }
+  barItemColor: (hex: string, orientation?: 'vertical' | 'horizontal') => string | echarts.graphic.LinearGradient
+  liveLineStyle: (kind: 'down' | 'up', width: number) => Record<string, unknown>
 }
 
 function withAlpha(hex: string, alpha: number): string {
@@ -53,17 +56,31 @@ function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-export function buildChartTheme(tokens: ThemeTokens, mode: ColorMode): ChartThemeConfig {
+function makeVerticalAreaGradient(hex: string, topAlpha: number): echarts.graphic.LinearGradient {
+  return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+    { offset: 0, color: withAlpha(hex, topAlpha) },
+    { offset: 1, color: withAlpha(hex, 0) },
+  ])
+}
+
+export function buildChartTheme(
+  tokens: ThemeTokens,
+  mode: ColorMode,
+  effects?: ThemeChartEffects,
+): ChartThemeConfig {
   const palette = tokens.chartPalette
   const downColor = palette[1] ?? tokens.accentPrimary
   const upColor = palette[2] ?? tokens.accentPrimary
+  const tooltipBg = effects?.tooltipBg?.[mode] ?? tokens.bgSurface
+  const heatmapBorder = effects?.heatmapBorderColor?.[mode] ?? tokens.bgSurface
+
   return {
     mode,
     palette,
     heatmapScale: tokens.heatmapScale,
-    heatmapBorderColor: tokens.bgSurface,
+    heatmapBorderColor: heatmapBorder,
     tooltip: {
-      backgroundColor: tokens.bgSurface,
+      backgroundColor: tooltipBg,
       borderColor: tokens.borderSubtle,
       textStyle: { color: tokens.textPrimary, fontSize: 12 },
     },
@@ -91,14 +108,45 @@ export function buildChartTheme(tokens: ThemeTokens, mode: ColorMode): ChartThem
     liveColors: {
       down: downColor,
       up: upColor,
-      downArea: withAlpha(downColor, mode === 'dark' ? 0.16 : 0.12),
-      upArea: withAlpha(upColor, mode === 'dark' ? 0.14 : 0.10),
+      downArea: effects?.areaGradient
+        ? makeVerticalAreaGradient(downColor, mode === 'dark' ? 0.34 : 0.24)
+        : withAlpha(downColor, mode === 'dark' ? 0.16 : 0.12),
+      upArea: effects?.areaGradient
+        ? makeVerticalAreaGradient(upColor, mode === 'dark' ? 0.24 : 0.16)
+        : withAlpha(upColor, mode === 'dark' ? 0.14 : 0.10),
     },
     sankeyColors: {
       app: palette[0] ?? tokens.accentPrimary,
       domain: palette[1] ?? tokens.statusSuccess,
       direct: palette[2] ?? tokens.textMuted,
       proxy: palette[4] ?? tokens.accentPrimary,
+    },
+    barItemColor: (hex: string, orientation: 'vertical' | 'horizontal' = 'vertical') => {
+      if (!effects?.barGradient) {
+        return hex
+      }
+      if (orientation === 'horizontal') {
+        return new echarts.graphic.LinearGradient(1, 0, 0, 0, [
+          { offset: 0, color: hex },
+          { offset: 1, color: withAlpha(hex, 0.72) },
+        ])
+      }
+      return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: hex },
+        { offset: 1, color: withAlpha(hex, 0.72) },
+      ])
+    },
+    liveLineStyle: (kind: 'down' | 'up', width: number) => {
+      const color = kind === 'down' ? downColor : upColor
+      if (effects?.lineGlow && mode === 'dark') {
+        return {
+          width,
+          color,
+          shadowBlur: 10,
+          shadowColor: withAlpha(color, 0.55),
+        }
+      }
+      return { width, color }
     },
   }
 }

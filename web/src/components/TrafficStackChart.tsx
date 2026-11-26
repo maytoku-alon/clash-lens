@@ -34,8 +34,11 @@ export function TrafficStackChart({
   scope,
   onInspectApp,
 }: TrafficStackChartProps) {
-  const { tokens, colorMode } = useTheme()
-  const chartTheme = useMemo(() => buildChartTheme(tokens, colorMode), [tokens, colorMode])
+  const { theme, tokens, colorMode } = useTheme()
+  const chartTheme = useMemo(
+    () => buildChartTheme(tokens, colorMode, theme.chartEffects),
+    [tokens, colorMode, theme.chartEffects],
+  )
 
   const chartRef = useRef<echarts.ECharts | null>(null)
   const [brushMode, setBrushMode] = useState(false)
@@ -201,12 +204,15 @@ export function TrafficStackChart({
         axisLabel: { color: chartTheme.axisLabelColor, fontSize: 11 },
       },
       yAxis: buildByteValueAxis(peakStacked, chartTheme, 11),
-      series: seriesList.map((s) => ({
+      series: seriesList.map((s, idx) => ({
         name: s.label || s.name,
         type: 'bar',
         stack: 'total',
         barMaxWidth: 28,
-        itemStyle: { borderRadius: [2, 2, 0, 0] },
+        itemStyle: {
+          color: chartTheme.barItemColor(chartTheme.palette[idx % chartTheme.palette.length]),
+          borderRadius: [2, 2, 0, 0],
+        },
         emphasis: { focus: 'series' },
         data: s.values,
       })),

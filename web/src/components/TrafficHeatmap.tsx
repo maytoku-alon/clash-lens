@@ -13,8 +13,11 @@ interface TrafficHeatmapProps {
 }
 
 export function TrafficHeatmap({ data, onSelectDay }: TrafficHeatmapProps) {
-  const { tokens, colorMode } = useTheme()
-  const chartTheme = useMemo(() => buildChartTheme(tokens, colorMode), [tokens, colorMode])
+  const { theme, tokens, colorMode } = useTheme()
+  const chartTheme = useMemo(
+    () => buildChartTheme(tokens, colorMode, theme.chartEffects),
+    [tokens, colorMode, theme.chartEffects],
+  )
   const vm = useMemo(() => buildHeatmapViewModel(data), [data])
 
   const option = useMemo<echarts.EChartsCoreOption>(() => {

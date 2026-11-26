@@ -38,13 +38,7 @@ export function AppearancePopover() {
       </button>
 
       {open && (
-        <div
-          className="absolute right-0 top-9 z-40 w-64 rounded-xl border p-3 shadow-xl"
-          style={{
-            backgroundColor: 'var(--cl-bg-surface)',
-            borderColor: 'var(--cl-border-subtle)',
-          }}
-        >
+        <div className="cl-popover absolute right-0 top-9 z-40 w-64 rounded-xl border p-3 shadow-xl">
           <div className="mb-2 text-[11px] font-semibold tracking-tight text-[var(--cl-text-muted)]">
             主题风格
           </div>

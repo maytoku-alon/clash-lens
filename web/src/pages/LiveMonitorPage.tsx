@@ -18,8 +18,11 @@ export function LiveMonitorPage({
   rateHistory,
   onOpenApp,
 }: LiveMonitorPageProps) {
-  const { tokens, colorMode } = useTheme()
-  const chartTheme = useMemo(() => buildChartTheme(tokens, colorMode), [tokens, colorMode])
+  const { theme, tokens, colorMode } = useTheme()
+  const chartTheme = useMemo(
+    () => buildChartTheme(tokens, colorMode, theme.chartEffects),
+    [tokens, colorMode, theme.chartEffects],
+  )
 
   const chartOption = useMemo<echarts.EChartsCoreOption>(() => {
     const pts = rateHistory.length > 0 ? rateHistory : [{ time: '--:--:--', down: 0, up: 0 }]
@@ -56,7 +59,7 @@ export function LiveMonitorPage({
           type: 'line',
           smooth: true,
           symbol: 'none',
-          lineStyle: { width: 2.2, color: chartTheme.liveColors.down },
+          lineStyle: chartTheme.liveLineStyle('down', 2.2),
           areaStyle: { color: chartTheme.liveColors.downArea },
           data: pts.map((p) => p.down),
         },
@@ -65,7 +68,7 @@ export function LiveMonitorPage({
           type: 'line',
           smooth: true,
           symbol: 'none',
-          lineStyle: { width: 2, color: chartTheme.liveColors.up },
+          lineStyle: chartTheme.liveLineStyle('up', 2),
           areaStyle: { color: chartTheme.liveColors.upArea },
           data: pts.map((p) => p.up),
         },

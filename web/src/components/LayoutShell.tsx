@@ -90,7 +90,7 @@ export function LayoutShell({
   const selectedDevice = selectedDeviceId === 'all' ? undefined : devices.find((d) => d.id === selectedDeviceId)
 
   return (
-    <div className="flex min-h-screen bg-[var(--cl-bg-page)] text-[var(--cl-text-primary)]">
+    <div className="flex min-h-screen text-[var(--cl-text-primary)]">
       {/* Left Navigation Rail */}
       {!kiosk && (
         <aside className="cl-surface sticky top-0 flex h-screen w-16 shrink-0 flex-col justify-between border-r px-2 py-5 lg:w-60 lg:px-3.5">

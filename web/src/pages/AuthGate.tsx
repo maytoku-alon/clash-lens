@@ -44,17 +44,10 @@ export function AuthGate({ initialized, onAuthenticated }: AuthGateProps) {
     <div
       className="flex min-h-screen items-center justify-center p-4"
       style={{
-        backgroundColor: 'var(--cl-bg-page)',
         color: 'var(--cl-text-primary)',
       }}
     >
-      <div
-        className="w-full max-w-md rounded-2xl border p-7 shadow-2xl"
-        style={{
-          backgroundColor: 'var(--cl-bg-surface)',
-          borderColor: 'var(--cl-border-subtle)',
-        }}
-      >
+      <div className="cl-card w-full max-w-md rounded-2xl p-7 shadow-2xl">
         <div className="mb-6 flex items-center gap-3">
           <div
             className="flex h-10 w-10 items-center justify-center rounded-xl border"

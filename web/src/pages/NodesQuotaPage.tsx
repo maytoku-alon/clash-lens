@@ -19,8 +19,11 @@ export function NodesQuotaPage({
   onOpenSettings,
   onOpenApp,
 }: NodesQuotaPageProps) {
-  const { tokens, colorMode } = useTheme()
-  const chartTheme = useMemo(() => buildChartTheme(tokens, colorMode), [tokens, colorMode])
+  const { theme, tokens, colorMode } = useTheme()
+  const chartTheme = useMemo(
+    () => buildChartTheme(tokens, colorMode, theme.chartEffects),
+    [tokens, colorMode, theme.chartEffects],
+  )
   const { data } = useNodesData(query)
 
   const donutOption = useMemo<echarts.EChartsCoreOption>(() => {
@@ -97,13 +100,19 @@ export function NodesQuotaPage({
           name: '原始流量',
           type: 'bar',
           data: topNodes.map((n) => n.raw_bytes),
-          itemStyle: { color: chartTheme.palette[1] ?? chartTheme.accentPrimary, borderRadius: [0, 4, 4, 0] },
+          itemStyle: {
+            color: chartTheme.barItemColor(chartTheme.palette[1] ?? chartTheme.accentPrimary, 'horizontal'),
+            borderRadius: [0, 4, 4, 0],
+          },
         },
         {
           name: '倍率计费',
           type: 'bar',
           data: topNodes.map((n) => n.billed_bytes),
-          itemStyle: { color: chartTheme.palette[0] ?? chartTheme.accentPrimary, borderRadius: [0, 4, 4, 0] },
+          itemStyle: {
+            color: chartTheme.barItemColor(chartTheme.palette[0] ?? chartTheme.accentPrimary, 'horizontal'),
+            borderRadius: [0, 4, 4, 0],
+          },
         },
       ],
     }

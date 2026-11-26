@@ -20,8 +20,11 @@ export function AppsExplorerPage({
   initialMode,
   initialTarget,
 }: AppsExplorerPageProps) {
-  const { tokens, colorMode } = useTheme()
-  const chartTheme = useMemo(() => buildChartTheme(tokens, colorMode), [tokens, colorMode])
+  const { theme, tokens, colorMode } = useTheme()
+  const chartTheme = useMemo(
+    () => buildChartTheme(tokens, colorMode, theme.chartEffects),
+    [tokens, colorMode, theme.chartEffects],
+  )
 
   const {
     mode,
@@ -78,12 +81,15 @@ export function AppsExplorerPage({
         axisLine: chartTheme.axisLine,
       },
       yAxis: buildByteValueAxis(peakStacked, chartTheme, 10),
-      series: seriesList.map((s) => ({
+      series: seriesList.map((s, idx) => ({
         name: s.label || s.name,
         type: 'bar',
         stack: 'total',
         barMaxWidth: 22,
-        itemStyle: { borderRadius: [2, 2, 0, 0] },
+        itemStyle: {
+          color: chartTheme.barItemColor(chartTheme.palette[idx % chartTheme.palette.length]),
+          borderRadius: [2, 2, 0, 0],
+        },
         data: s.values,
       })),
     }

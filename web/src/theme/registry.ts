@@ -1,3 +1,4 @@
+import { auroraMeshTheme } from './themes/auroraMesh'
 import { defaultTheme } from './themes/default'
 import { obsidianPlumTheme } from './themes/obsidianPlum'
 import type { ThemeDefinition } from './types'
@@ -32,4 +33,4 @@ class ThemeRegistry {
   }
 }
 
-export const themeRegistry = new ThemeRegistry([defaultTheme, obsidianPlumTheme])
+export const themeRegistry = new ThemeRegistry([defaultTheme, obsidianPlumTheme, auroraMeshTheme])

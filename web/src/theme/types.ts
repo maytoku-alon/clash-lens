@@ -20,6 +20,14 @@ export interface ThemeTokens {
   heatmapScale: [string, string, string, string, string]
 }
 
+export interface ThemeChartEffects {
+  barGradient?: boolean
+  areaGradient?: boolean
+  lineGlow?: boolean
+  tooltipBg?: Record<ColorMode, string>
+  heatmapBorderColor?: Record<ColorMode, string>
+}
+
 export interface ThemeDefinition {
   id: string
   name: string
@@ -30,5 +38,6 @@ export interface ThemeDefinition {
     fontMono: string
     baseSize: string
   }
+  chartEffects?: ThemeChartEffects
   modes: Record<ColorMode, ThemeTokens>
 }

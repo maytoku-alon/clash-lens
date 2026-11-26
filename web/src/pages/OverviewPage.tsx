@@ -29,8 +29,11 @@ export function OverviewPage({
   onOpenApp,
   onOpenDomain,
 }: OverviewPageProps) {
-  const { tokens, colorMode } = useTheme()
-  const chartTheme = useMemo(() => buildChartTheme(tokens, colorMode), [tokens, colorMode])
+  const { theme, tokens, colorMode } = useTheme()
+  const chartTheme = useMemo(
+    () => buildChartTheme(tokens, colorMode, theme.chartEffects),
+    [tokens, colorMode, theme.chartEffects],
+  )
 
   const [groupBy, setGroupBy] = useState<GroupByDim>('process')
   const [rankTab, setRankTab] = useState<'apps' | 'domains'>('apps')
@@ -50,7 +53,7 @@ export function OverviewPage({
           data: pts.map((p) => p.down),
           smooth: true,
           symbol: 'none',
-          lineStyle: { width: 1.8, color: chartTheme.liveColors.down },
+          lineStyle: chartTheme.liveLineStyle('down', 1.8),
           areaStyle: { color: chartTheme.liveColors.downArea },
         },
         {
@@ -58,7 +61,7 @@ export function OverviewPage({
           data: pts.map((p) => p.up),
           smooth: true,
           symbol: 'none',
-          lineStyle: { width: 1.5, color: chartTheme.liveColors.up },
+          lineStyle: chartTheme.liveLineStyle('up', 1.5),
         },
       ],
     }

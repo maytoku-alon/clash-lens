@@ -18,7 +18,7 @@
           }
           var layout = localStorage.getItem('clashlens_layout');
           if (layout !== 'classic' && layout !== 'bento') {
-            layout = themeId === 'obsidian-plum' ? 'bento' : 'classic';
+            layout = themeId === 'obsidian-plum' || themeId === 'aurora-mesh' ? 'bento' : 'classic';
           }
           r.setAttribute('data-theme', themeId);
           r.setAttribute('data-mode', mode);
