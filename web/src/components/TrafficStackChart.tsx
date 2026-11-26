@@ -7,6 +7,7 @@ import { buildByteValueAxis, buildChartTheme } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
 import type { BurstEvent, GroupByDim, TimeseriesResponse, TrafficScope } from '../types/api'
 import { formatBytes, formatFullTime, formatTimeBucket } from '../utils/format'
+import { maskHostOrDomain } from '../utils/privacy'
 import { EChartBox } from './EChartBox'
 
 const DIM_TABS: { key: GroupByDim; label: string }[] = [
@@ -34,7 +35,7 @@ export function TrafficStackChart({
   scope,
   onInspectApp,
 }: TrafficStackChartProps) {
-  const { theme, tokens, colorMode } = useTheme()
+  const { theme, tokens, colorMode, privacyMode } = useTheme()
   const chartTheme = useMemo(
     () => buildChartTheme(tokens, colorMode, theme.chartEffects),
     [tokens, colorMode, theme.chartEffects],
@@ -135,6 +136,10 @@ export function TrafficStackChart({
     const labels = timestamps.map((ts) => formatTimeBucket(ts, interval))
     const seriesList = data?.series ?? []
     const peakStacked = maxStackedSeriesValue(seriesList)
+    const displaySeriesNames = seriesList.map((s) => {
+      const raw = s.label || s.name
+      return groupBy === 'domain' ? maskHostOrDomain(raw, privacyMode) : raw
+    })
 
     return {
       color: chartTheme.palette,
@@ -205,7 +210,7 @@ export function TrafficStackChart({
       },
       yAxis: buildByteValueAxis(peakStacked, chartTheme, 11),
       series: seriesList.map((s, idx) => ({
-        name: s.label || s.name,
+        name: displaySeriesNames[idx],
         type: 'bar',
         stack: 'total',
         barMaxWidth: 28,
@@ -217,7 +222,7 @@ export function TrafficStackChart({
         data: s.values,
       })),
     }
-  }, [data, chartTheme])
+  }, [data, chartTheme, groupBy, privacyMode])
 
   const handleReady = (chart: echarts.ECharts) => {
     chartRef.current = chart
@@ -247,7 +252,7 @@ export function TrafficStackChart({
   }
 
   return (
-    <div className="cl-card rounded-xl p-4 sm:p-5">
+    <div className="cl-card flex h-full flex-col rounded-xl p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">分时流量分布与突发溯源</h2>
@@ -350,7 +355,7 @@ export function TrafficStackChart({
                     </div>
                     <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--cl-text-muted)]">
                       <span className="truncate">
-                        {item.root_domain}
+                        {maskHostOrDomain(item.root_domain, privacyMode)}
                         {item.service_tag ? ` · ${item.service_tag}` : ''}
                       </span>
                       <span

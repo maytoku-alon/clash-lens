@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, LayoutGrid, Palette, Rows3 } from 'lucide-react'
+import { Check, EyeOff, LayoutGrid, Palette, Rows3 } from 'lucide-react'
 import { useTheme } from '../theme/ThemeProvider'
 
 export function AppearancePopover() {
-  const { themeId, availableThemes, setThemeId, layout, setLayout } = useTheme()
+  const { themeId, availableThemes, setThemeId, layout, setLayout, privacyMode, togglePrivacyMode } = useTheme()
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
@@ -38,7 +38,7 @@ export function AppearancePopover() {
       </button>
 
       {open && (
-        <div className="cl-popover absolute right-0 top-9 z-40 w-64 rounded-xl border p-3 shadow-xl">
+        <div className="cl-popover absolute right-0 top-9 z-40 w-72 rounded-xl border p-3 shadow-xl">
           <div className="mb-2 text-[11px] font-semibold tracking-tight text-[var(--cl-text-muted)]">
             主题风格
           </div>
@@ -85,7 +85,7 @@ export function AppearancePopover() {
             <button
               type="button"
               onClick={() => setLayout('classic')}
-              className="flex cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] font-medium transition"
+              className="flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-1.5 text-[11px] font-medium transition"
               style={{
                 borderColor: layout === 'classic' ? 'var(--cl-border-focus)' : 'var(--cl-border-subtle)',
                 backgroundColor: layout === 'classic' ? 'var(--cl-accent-soft)' : 'var(--cl-bg-sidebar)',
@@ -98,7 +98,7 @@ export function AppearancePopover() {
             <button
               type="button"
               onClick={() => setLayout('bento')}
-              className="flex cursor-pointer items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] font-medium transition"
+              className="flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-1.5 text-[11px] font-medium transition"
               style={{
                 borderColor: layout === 'bento' ? 'var(--cl-border-focus)' : 'var(--cl-border-subtle)',
                 backgroundColor: layout === 'bento' ? 'var(--cl-accent-soft)' : 'var(--cl-bg-sidebar)',
@@ -109,6 +109,46 @@ export function AppearancePopover() {
               Bento 宽屏
             </button>
           </div>
+
+          <div
+            className="my-2.5 border-t"
+            style={{ borderColor: 'var(--cl-border-subtle)' }}
+          />
+
+          <button
+            type="button"
+            onClick={togglePrivacyMode}
+            className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left transition"
+            style={{
+              borderColor: privacyMode ? 'var(--cl-border-focus)' : 'var(--cl-border-subtle)',
+              backgroundColor: privacyMode ? 'var(--cl-accent-soft)' : 'var(--cl-bg-sidebar)',
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <EyeOff
+                className="h-3.5 w-3.5 shrink-0"
+                style={{ color: privacyMode ? 'var(--cl-accent-primary)' : 'var(--cl-text-muted)' }}
+              />
+              <div>
+                <div
+                  className="text-[11px] font-medium"
+                  style={{ color: privacyMode ? 'var(--cl-accent-primary)' : 'var(--cl-text-primary)' }}
+                >
+                  隐私脱敏模式
+                </div>
+                <div className="text-[10px] text-[var(--cl-text-muted)]">演示时隐藏域名与 IP 明文</div>
+              </div>
+            </div>
+            <span
+              className="rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold"
+              style={{
+                backgroundColor: privacyMode ? 'var(--cl-accent-primary)' : 'var(--cl-border-subtle)',
+                color: privacyMode ? '#ffffff' : 'var(--cl-text-muted)',
+              }}
+            >
+              {privacyMode ? 'ON' : 'OFF'}
+            </span>
+          </button>
         </div>
       )}
     </div>

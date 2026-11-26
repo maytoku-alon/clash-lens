@@ -1,10 +1,11 @@
 import * as echarts from 'echarts'
 import { computeNiceByteScale, computeNiceSpeedScale, formatAxisBytes, formatAxisSpeed } from '../adapters/trafficAdapter'
-import type { ColorMode, ThemeChartEffects, ThemeTokens } from './types'
+import type { ColorMode, SemanticMetricColors, ThemeChartEffects, ThemeTokens } from './types'
 
 export interface ChartThemeConfig {
   mode: ColorMode
   palette: string[]
+  metricColors: SemanticMetricColors
   heatmapScale: [string, string, string, string, string]
   heatmapBorderColor: string
   tooltip: {
@@ -69,14 +70,16 @@ export function buildChartTheme(
   effects?: ThemeChartEffects,
 ): ChartThemeConfig {
   const palette = tokens.chartPalette
-  const downColor = palette[1] ?? tokens.accentPrimary
-  const upColor = palette[2] ?? tokens.accentPrimary
+  const metrics = tokens.semanticMetrics
+  const downColor = metrics.download
+  const upColor = metrics.upload
   const tooltipBg = effects?.tooltipBg?.[mode] ?? tokens.bgSurface
   const heatmapBorder = effects?.heatmapBorderColor?.[mode] ?? tokens.bgSurface
 
   return {
     mode,
     palette,
+    metricColors: metrics,
     heatmapScale: tokens.heatmapScale,
     heatmapBorderColor: heatmapBorder,
     tooltip: {
@@ -101,9 +104,9 @@ export function buildChartTheme(
     accentSoft: tokens.accentSoft,
     barBorderRadius: [3, 3, 0, 0],
     routeColors: {
-      PROXY: palette[0] ?? tokens.statusSuccess,
-      DIRECT: palette[2] ?? tokens.accentPrimary,
-      REJECT: tokens.statusDanger,
+      PROXY: metrics.proxy,
+      DIRECT: metrics.direct,
+      REJECT: metrics.reject,
     },
     liveColors: {
       down: downColor,
@@ -117,9 +120,9 @@ export function buildChartTheme(
     },
     sankeyColors: {
       app: palette[0] ?? tokens.accentPrimary,
-      domain: palette[1] ?? tokens.statusSuccess,
-      direct: palette[2] ?? tokens.textMuted,
-      proxy: palette[4] ?? tokens.accentPrimary,
+      domain: palette[1] ?? metrics.download,
+      direct: metrics.direct,
+      proxy: metrics.proxy,
     },
     barItemColor: (hex: string, orientation: 'vertical' | 'horizontal' = 'vertical') => {
       if (!effects?.barGradient) {

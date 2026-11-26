@@ -3,6 +3,9 @@ import type {
   CreateDeviceResponse,
   DeviceInfo,
   SettingsPayload,
+  StoragePruneRequest,
+  StoragePruneResponse,
+  StorageStatsResponse,
 } from '../types/api'
 import { localTZOffsetMinutes } from '../utils/format'
 import { cachedGetJSON, invalidateCache, reqJSON, type FetchOptions } from './http'
@@ -67,5 +70,15 @@ export const deviceApi = {
     }
     invalidateCache()
     return parsed as unknown as BackupImportResult
+  },
+
+  getStorageStats: () => reqJSON<StorageStatsResponse>('/api/v1/storage/stats'),
+  pruneStorage: async (payload: StoragePruneRequest) => {
+    const res = await reqJSON<StoragePruneResponse>('/api/v1/storage/prune', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    invalidateCache()
+    return res
   },
 }

@@ -1,12 +1,13 @@
 import { useMemo } from 'react'
 import type * as echarts from 'echarts'
-import { AlertCircle, ArrowRight, Gauge, Network, ShieldCheck } from 'lucide-react'
+import { AlertCircle, ArrowRight, Gauge, Network, Plus, ShieldCheck } from 'lucide-react'
 import type { QueryParams } from '../api/trafficApi'
 import { EChartBox } from '../components/EChartBox'
 import { useNodesData } from '../hooks/useDashboardQueries'
 import { buildByteValueAxis, buildChartTheme } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
 import { formatBytes, formatNumber } from '../utils/format'
+import { isMatchFallbackRule, maskHostOrDomain, maskRuleText } from '../utils/privacy'
 
 interface NodesQuotaPageProps {
   query: QueryParams
@@ -19,12 +20,24 @@ export function NodesQuotaPage({
   onOpenSettings,
   onOpenApp,
 }: NodesQuotaPageProps) {
-  const { theme, tokens, colorMode } = useTheme()
+  const { theme, tokens, colorMode, privacyMode } = useTheme()
   const chartTheme = useMemo(
     () => buildChartTheme(tokens, colorMode, theme.chartEffects),
     [tokens, colorMode, theme.chartEffects],
   )
   const { data } = useNodesData(query)
+
+  const routeSummary = useMemo(() => {
+    const splits = data?.route_split ?? []
+    let total = 0
+    let proxy = 0
+    for (const s of splits) {
+      total += s.total_bytes
+      if (s.route_type === 'PROXY') proxy += s.total_bytes
+    }
+    const proxyPct = total > 0 ? (proxy / total) * 100 : 0
+    return { total, proxy, proxyPct }
+  }, [data])
 
   const donutOption = useMemo<echarts.EChartsCoreOption>(() => {
     const splits = data?.route_split ?? []
@@ -53,8 +66,10 @@ export function NodesQuotaPage({
       series: [
         {
           type: 'pie',
-          radius: ['52%', '76%'],
-          center: ['50%', '44%'],
+          radius: ['56%', '78%'],
+          center: ['50%', '43%'],
+          padAngle: 2,
+          itemStyle: { borderRadius: 4 },
           label: { show: false },
           data: splits.map((s) => ({
             name: labelMap[s.route_type] || s.route_type,
@@ -97,11 +112,11 @@ export function NodesQuotaPage({
       },
       series: [
         {
-          name: '原始流量',
+          name: '实际消耗',
           type: 'bar',
           data: topNodes.map((n) => n.raw_bytes),
           itemStyle: {
-            color: chartTheme.barItemColor(chartTheme.palette[1] ?? chartTheme.accentPrimary, 'horizontal'),
+            color: chartTheme.barItemColor(chartTheme.metricColors.actual, 'horizontal'),
             borderRadius: [0, 4, 4, 0],
           },
         },
@@ -110,7 +125,7 @@ export function NodesQuotaPage({
           type: 'bar',
           data: topNodes.map((n) => n.billed_bytes),
           itemStyle: {
-            color: chartTheme.barItemColor(chartTheme.palette[0] ?? chartTheme.accentPrimary, 'horizontal'),
+            color: chartTheme.barItemColor(chartTheme.metricColors.billed, 'horizontal'),
             borderRadius: [0, 4, 4, 0],
           },
         },
@@ -119,6 +134,13 @@ export function NodesQuotaPage({
   }, [data, chartTheme])
 
   const quota = data?.quota
+  const dailyAvgEstimate = useMemo(() => {
+    if (!quota?.enabled) return 0
+    const startMs = Date.parse(`${quota.cycle_start_label}T00:00:00`)
+    if (Number.isNaN(startMs)) return quota.billed_bytes
+    const elapsedDays = Math.max(1, Math.floor((Date.now() - startMs) / 86400000) + 1)
+    return quota.billed_bytes / elapsedDays
+  }, [quota])
 
   return (
     <div className="space-y-4">
@@ -153,7 +175,7 @@ export function NodesQuotaPage({
             <div className="mt-3 flex items-baseline gap-2">
               <span
                 className="font-mono text-2xl font-bold tabular-nums"
-                style={{ color: 'var(--cl-accent-primary)' }}
+                style={{ color: chartTheme.metricColors.billed }}
               >
                 {formatBytes(quota?.billed_bytes)}
               </span>
@@ -164,7 +186,7 @@ export function NodesQuotaPage({
               )}
             </div>
             <div className="mt-1 font-mono text-xs text-[var(--cl-text-muted)] tabular-nums">
-              原始代理流量: {formatBytes(quota?.raw_proxy_bytes)}
+              实际代理流量: {formatBytes(quota?.raw_proxy_bytes)}
             </div>
           </div>
 
@@ -179,24 +201,30 @@ export function NodesQuotaPage({
                   style={{
                     width: `${Math.min(100, quota.used_percent)}%`,
                     backgroundColor:
-                      quota.used_percent > 85 ? 'var(--cl-status-danger)' : 'var(--cl-accent-primary)',
+                      quota.used_percent > 85 ? 'var(--cl-status-danger)' : chartTheme.metricColors.billed,
                   }}
                 />
               </div>
               <div className="flex justify-between font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
-                <span>已用 {quota.used_percent.toFixed(1)}%</span>
+                <span>已用 {quota.used_percent.toFixed(1)}% · 日均 {formatBytes(dailyAvgEstimate)}</span>
                 <span>预计本周期 {quota.projected_gb.toFixed(1)} GB · 剩 {quota.days_remaining} 天</span>
               </div>
             </div>
           ) : (
             <div
-              className="mt-4 rounded-lg border p-3 text-xs text-[var(--cl-text-muted)]"
+              className="mt-4 flex flex-col gap-3 rounded-lg border p-3 text-xs text-[var(--cl-text-muted)]"
               style={{
                 borderColor: 'var(--cl-border-subtle)',
                 backgroundColor: 'var(--cl-bg-sidebar)',
               }}
             >
-              暂未设定月度套餐配额。点击右上角「配置套餐与节点倍率」可开启配额进度条与节点倍率换算（如 0.5x / 2x）。
+              <span>暂未设定月度套餐配额。配置后可实时监控配额余量、周期日均与节点倍率折算。</span>
+              <div>
+                <button type="button" onClick={onOpenSettings} className="cl-btn-primary !h-7 !px-2.5 !text-[11px]">
+                  <Plus className="h-3 w-3" />
+                  立即配置套餐
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -204,7 +232,21 @@ export function NodesQuotaPage({
         {/* Route Donut */}
         <div className="cl-card rounded-xl p-4 lg:col-span-3">
           <div className="mb-1 text-xs font-semibold">代理 / 直连 / 拦截占比</div>
-          <EChartBox option={donutOption} className="h-[220px] w-full" />
+          <div className="relative h-[220px] w-full">
+            <EChartBox option={donutOption} className="h-[220px] w-full" />
+            <div className="pointer-events-none absolute inset-x-0 top-[26%] flex flex-col items-center justify-center text-center">
+              <span className="text-[10px] text-[var(--cl-text-muted)]">代理占比</span>
+              <span
+                className="font-mono text-lg font-bold leading-tight tabular-nums"
+                style={{ color: chartTheme.routeColors.PROXY }}
+              >
+                {routeSummary.proxyPct.toFixed(1)}%
+              </span>
+              <span className="font-mono text-[10px] text-[var(--cl-text-muted)] tabular-nums">
+                共 {formatBytes(routeSummary.total, 1)}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Nodes Bar */}
@@ -247,7 +289,7 @@ export function NodesQuotaPage({
                         className="truncate font-mono"
                         style={{ color: 'var(--cl-accent-primary)' }}
                       >
-                        {item.root_domain}
+                        {maskHostOrDomain(item.root_domain, privacyMode)}
                       </span>
                       {item.service_tag && (
                         <span
@@ -257,22 +299,33 @@ export function NodesQuotaPage({
                           {item.service_tag}
                         </span>
                       )}
+                      {isMatchFallbackRule(item.rule) && (
+                        <span
+                          className="rounded px-1.5 py-0.5 font-mono text-[10px]"
+                          style={{
+                            backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                            color: 'var(--cl-status-warning)',
+                          }}
+                        >
+                          兜底
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[10px] text-[var(--cl-text-muted)]">
                       <span>节点: {item.egress_node}</span>
-                      <span>· 规则: {item.rule || '-'}</span>
+                      <span>· 规则: {maskRuleText(item.rule || '-', privacyMode)}</span>
                       {item.inbound_mode === 'TUN' && (
                         <span style={{ color: 'var(--cl-accent-primary)' }}>· TUN</span>
                       )}
                     </div>
                   </div>
                   <div className="shrink-0 text-right font-mono tabular-nums">
-                    <div className="text-xs font-bold" style={{ color: 'var(--cl-accent-primary)' }}>
+                    <div className="text-xs font-bold" style={{ color: chartTheme.metricColors.billed }}>
                       {formatBytes(item.billed_bytes)}
                     </div>
                     {item.billed_bytes !== item.total_bytes && (
                       <div className="text-[10px] text-[var(--cl-text-muted)]">
-                        原始 {formatBytes(item.total_bytes)}
+                        实际 {formatBytes(item.total_bytes)}
                       </div>
                     )}
                   </div>
@@ -315,40 +368,51 @@ export function NodesQuotaPage({
                     </td>
                   </tr>
                 ) : (
-                  data.rules.map((r, i) => (
-                    <tr key={`${r.rule}-${r.route_type}-${i}`} className="hover:bg-[var(--cl-bg-surface-hover)]">
-                      <td className="max-w-[220px] truncate px-4 py-2 font-mono">{r.rule}</td>
-                      <td className="px-4 py-2">
-                        <span
-                          className="rounded px-1.5 py-0.5 font-mono text-[10px]"
-                          style={
-                            r.route_type === 'PROXY'
-                              ? {
-                                  backgroundColor: 'var(--cl-accent-soft)',
-                                  color: 'var(--cl-accent-primary)',
-                                }
-                              : r.route_type === 'DIRECT'
-                                ? {
-                                    backgroundColor: 'var(--cl-bg-surface-hover)',
-                                    color: 'var(--cl-status-success)',
-                                  }
-                                : {
-                                    backgroundColor: 'var(--cl-bg-surface-hover)',
-                                    color: 'var(--cl-status-danger)',
-                                  }
-                          }
-                        >
-                          {r.route_type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-right font-mono font-semibold tabular-nums">
-                        {formatBytes(r.total_bytes)}
-                      </td>
-                      <td className="px-4 py-2 text-right font-mono text-[var(--cl-text-muted)] tabular-nums">
-                        {formatNumber(r.conn_count)}
-                      </td>
-                    </tr>
-                  ))
+                  data.rules.map((r, i) => {
+                    const isMatch = isMatchFallbackRule(r.rule)
+                    return (
+                      <tr key={`${r.rule}-${r.route_type}-${i}`} className="hover:bg-[var(--cl-bg-surface-hover)]">
+                        <td className="max-w-[240px] px-4 py-2 font-mono">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate">{maskRuleText(r.rule, privacyMode)}</span>
+                            {isMatch && (
+                              <span
+                                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                                  color: 'var(--cl-status-warning)',
+                                }}
+                              >
+                                兜底
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2">
+                          <span
+                            className="rounded px-1.5 py-0.5 font-mono text-[10px]"
+                            style={{
+                              backgroundColor: 'var(--cl-bg-surface-hover)',
+                              color:
+                                r.route_type === 'PROXY'
+                                  ? chartTheme.routeColors.PROXY
+                                  : r.route_type === 'DIRECT'
+                                    ? chartTheme.routeColors.DIRECT
+                                    : chartTheme.routeColors.REJECT,
+                            }}
+                          >
+                            {r.route_type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono font-semibold tabular-nums">
+                          {formatBytes(r.total_bytes)}
+                        </td>
+                        <td className="px-4 py-2 text-right font-mono text-[var(--cl-text-muted)] tabular-nums">
+                          {formatNumber(r.conn_count)}
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>

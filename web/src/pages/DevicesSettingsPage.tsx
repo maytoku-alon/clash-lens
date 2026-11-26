@@ -1,9 +1,30 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { Check, Copy, Database, Download, ExternalLink, KeyRound, Plus, Save, Trash2, Upload, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Database,
+  Download,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  HardDrive,
+  KeyRound,
+  Plus,
+  Save,
+  Shield,
+  Terminal,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react'
 import { authApi } from '../api/authApi'
 import { deviceApi } from '../api/deviceApi'
-import type { DeviceInfo, SettingsPayload } from '../types/api'
-import { formatBytes, formatRelativeTime } from '../utils/format'
+import { useTheme } from '../theme/ThemeProvider'
+import type { DeviceInfo, SettingsPayload, StoragePruneResponse, StorageStatsResponse } from '../types/api'
+import { formatBytes, formatFullTime, formatRelativeTime } from '../utils/format'
 
 interface DevicesSettingsPageProps {
   devices: DeviceInfo[]
@@ -18,6 +39,7 @@ export function DevicesSettingsPage({
   initialSubTab = 'devices',
   localMode = false,
 }: DevicesSettingsPageProps) {
+  const { privacyMode, togglePrivacyMode } = useTheme()
   const [subTab, setSubTab] = useState<'devices' | 'settings'>(initialSubTab)
 
   // Add device form
@@ -27,6 +49,8 @@ export function DevicesSettingsPage({
   const [deviceFormErr, setDeviceFormErr] = useState('')
   const [creating, setCreating] = useState(false)
   const [mintedToken, setMintedToken] = useState<{ name: string; os: string; token: string } | null>(null)
+  const [revealMintedToken, setRevealMintedToken] = useState(false)
+  const [expandedCmdId, setExpandedCmdId] = useState('')
   const [copiedKey, setCopiedKey] = useState('')
 
   // Rename / edit device state
@@ -56,15 +80,37 @@ export function DevicesSettingsPage({
   const [importingBackup, setImportingBackup] = useState(false)
   const [backupNotice, setBackupNotice] = useState<{ ok: boolean; text: string } | null>(null)
 
+  // Storage stats & prune state
+  const [storageStats, setStorageStats] = useState<StorageStatsResponse | null>(null)
+  const [storageLoading, setStorageLoading] = useState(false)
+  const [retainDays, setRetainDays] = useState(30)
+  const [pruneVacuum, setPruneVacuum] = useState(true)
+  const [confirmPruneOpen, setConfirmPruneOpen] = useState(false)
+  const [pruning, setPruning] = useState(false)
+  const [pruneNotice, setPruneNotice] = useState<{ ok: boolean; text: string; detail?: StoragePruneResponse } | null>(null)
+
   useEffect(() => {
     setSubTab(initialSubTab)
   }, [initialSubTab])
+
+  const loadStorageStats = async () => {
+    setStorageLoading(true)
+    try {
+      const s = await deviceApi.getStorageStats()
+      setStorageStats(s)
+    } catch {
+      // ignore
+    } finally {
+      setStorageLoading(false)
+    }
+  }
 
   useEffect(() => {
     deviceApi
       .getSettings()
       .then((s) => setSettings(s))
       .catch(() => {})
+    void loadStorageStats()
   }, [])
 
   const serverOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:8080'
@@ -124,6 +170,7 @@ export function DevicesSettingsPage({
     try {
       const res = await deviceApi.create(name, newOS, undefined, newDashboardURL.trim() || undefined)
       setMintedToken({ name: res.device.name, os: res.device.os, token: res.token })
+      setRevealMintedToken(false)
       setNewName('')
       setNewDashboardURL('')
       onDevicesChanged()
@@ -189,6 +236,7 @@ export function DevicesSettingsPage({
         text: `合并成功：新增设备 ${res.devices_imported} 台、已有设备 ${res.devices_existing} 台、导入分钟统计 ${res.minute_totals_rows} 条、明细 ${res.minute_flows_rows + res.hourly_flows_rows} 条${res.settings_imported ? '（已同步套餐设置）' : ''}。`,
       })
       onDevicesChanged()
+      void loadStorageStats()
       if (res.settings_imported) {
         deviceApi.getSettings({ force: true }).then((s) => setSettings(s)).catch(() => {})
       }
@@ -202,8 +250,44 @@ export function DevicesSettingsPage({
     }
   }
 
+  const handleConfirmPrune = async () => {
+    const safeDays = Math.max(7, Math.floor(retainDays || 30))
+    setPruning(true)
+    setPruneNotice(null)
+    try {
+      const res = await deviceApi.pruneStorage({ retain_days: safeDays, vacuum: pruneVacuum })
+      setPruneNotice({
+        ok: true,
+        text: `已清理 ${res.total_deleted_rows} 条过期记录（空间 ${formatBytes(res.before_bytes)} → ${formatBytes(res.after_bytes)}）。`,
+        detail: res,
+      })
+      setConfirmPruneOpen(false)
+      onDevicesChanged()
+      void loadStorageStats()
+    } catch (err) {
+      setPruneNotice({
+        ok: false,
+        text: err instanceof Error ? err.message : '清理失败',
+      })
+      setConfirmPruneOpen(false)
+    } finally {
+      setPruning(false)
+    }
+  }
+
+  const buildStarterCommand = (osName: string, tokenVal: string) => {
+    if (osName === 'linux' || osName === 'darwin') {
+      const bin = osName === 'darwin' ? './clashlens-agent-darwin-arm64' : './clashlens-agent-linux-amd64'
+      return `${bin} --server ${serverOrigin} --token ${tokenVal}`
+    }
+    return `.\\clashlens-agent-windows-amd64.exe --server ${serverOrigin} --token ${tokenVal}`
+  }
+
   const sampleYAML = mintedToken
     ? `server_url: "${serverOrigin}"\ndevice_token: "${mintedToken.token}"\nclash_endpoint: "auto"\nsanitize_paths: true\nsanitize_mode: "mask"\nflush_interval_sec: 60\nupload_interval_sec: 15\nlive_push_interval_sec: 2`
+    : ''
+  const previewYAML = mintedToken
+    ? `server_url: "${serverOrigin}"\ndevice_token: "${revealMintedToken ? mintedToken.token : `${mintedToken.token.slice(0, 6)}••••••••••••`}"\nclash_endpoint: "auto"\nsanitize_paths: true\nsanitize_mode: "mask"\nflush_interval_sec: 60\nupload_interval_sec: 15\nlive_push_interval_sec: 2`
     : ''
 
   return (
@@ -314,8 +398,17 @@ export function DevicesSettingsPage({
                     color: 'var(--cl-text-primary)',
                   }}
                 >
-                  <pre className="overflow-x-auto whitespace-pre-wrap pr-44 select-all">{sampleYAML}</pre>
+                  <pre className="overflow-x-auto whitespace-pre-wrap pr-56 select-all">{previewYAML}</pre>
                   <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setRevealMintedToken((v) => !v)}
+                      className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
+                      title={revealMintedToken ? '隐藏明文 Token' : '显示明文 Token'}
+                    >
+                      {revealMintedToken ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      {revealMintedToken ? '隐藏' : '显示'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => downloadYAML(sampleYAML)}
@@ -348,15 +441,15 @@ export function DevicesSettingsPage({
                   }}
                 >
                   <span className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap select-all">
-                    .\clashlens-agent-windows-amd64.exe --server {serverOrigin} --token {mintedToken.token}
+                    {buildStarterCommand(
+                      mintedToken.os,
+                      revealMintedToken ? mintedToken.token : `${mintedToken.token.slice(0, 6)}••••••••••••`,
+                    )}
                   </span>
                   <button
                     type="button"
                     onClick={() =>
-                      void copyText(
-                        'cmd',
-                        `.\\clashlens-agent-windows-amd64.exe --server ${serverOrigin} --token ${mintedToken.token}`,
-                      )
+                      void copyText('cmd', buildStarterCommand(mintedToken.os, mintedToken.token))
                     }
                     className="cl-btn-secondary !h-6 shrink-0 !px-2 !text-[11px]"
                   >
@@ -381,127 +474,200 @@ export function DevicesSettingsPage({
                   尚未添加任何设备，请在上方创建首个设备 Token
                 </div>
               ) : (
-                devices.map((d) => (
-                  <div
-                    key={d.id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className="h-2 w-2 rounded-full"
-                          style={{
-                            backgroundColor: d.online ? 'var(--cl-status-success)' : 'var(--cl-text-muted)',
-                          }}
-                        />
-                        {editingId === d.id ? (
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <input
-                              value={editingName}
-                              onChange={(e) => setEditingName(e.target.value)}
-                              className="cl-input !h-6 !px-2 text-xs"
-                              placeholder="设备名称"
+                devices.map((d) => {
+                  const cmdOpen = expandedCmdId === d.id
+                  const starterTemplate = buildStarterCommand(d.os, `<YOUR_TOKEN_${d.token_prefix}>`)
+                  const diagAlerts: string[] = []
+                  if (d.tun_enabled && !d.sniffer_enabled) {
+                    diagAlerts.push('TUN 已开启但域名嗅探 (Sniffer) 未开启，部分连接可能仅显示 IP')
+                  }
+                  if (!d.online && d.last_seen_at > 0) {
+                    diagAlerts.push(`心跳已离线（最后上报 ${formatRelativeTime(d.last_seen_at)}），请确认采集端正在运行`)
+                  }
+                  return (
+                    <div key={d.id} className="px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{
+                                backgroundColor: d.online ? 'var(--cl-status-success)' : 'var(--cl-text-muted)',
+                              }}
                             />
-                            <input
-                              type="url"
-                              value={editingDashboardURL}
-                              onChange={(e) => setEditingDashboardURL(e.target.value)}
-                              className="cl-input !h-6 min-w-[200px] !px-2 font-mono text-xs"
-                              placeholder="Clash 面板 URL（可选）"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleRename(d)}
-                              className="cl-btn-primary !h-6 !px-2 !text-[11px]"
+                            {editingId === d.id ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <input
+                                  value={editingName}
+                                  onChange={(e) => setEditingName(e.target.value)}
+                                  className="cl-input !h-6 !px-2 text-xs"
+                                  placeholder="设备名称"
+                                />
+                                <input
+                                  type="url"
+                                  value={editingDashboardURL}
+                                  onChange={(e) => setEditingDashboardURL(e.target.value)}
+                                  className="cl-input !h-6 min-w-[200px] !px-2 font-mono text-xs"
+                                  placeholder="Clash 面板 URL（可选）"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRename(d)}
+                                  className="cl-btn-primary !h-6 !px-2 !text-[11px]"
+                                >
+                                  保存
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingId('')}
+                                  className="text-[11px] text-[var(--cl-text-muted)]"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingId(d.id)
+                                  setEditingName(d.name)
+                                  setEditingDashboardURL(d.dashboard_url || '')
+                                }}
+                                className="cursor-pointer text-sm font-semibold hover:underline"
+                                style={{ color: 'var(--cl-text-primary)' }}
+                                title="点击编辑设备名称与面板链接"
+                              >
+                                {d.name}
+                              </button>
+                            )}
+                            <span
+                              className="rounded px-1.5 py-0.5 font-mono text-[10px] text-[var(--cl-text-muted)]"
+                              style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
                             >
-                              保存
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingId('')}
-                              className="text-[11px] text-[var(--cl-text-muted)]"
-                            >
-                              取消
-                            </button>
+                              {d.os}
+                            </span>
+                            {d.tun_enabled && (
+                              <span
+                                className="rounded px-1.5 py-0.5 font-mono text-[10px]"
+                                style={{
+                                  backgroundColor: 'var(--cl-accent-soft)',
+                                  color: 'var(--cl-accent-primary)',
+                                }}
+                              >
+                                TUN
+                              </span>
+                            )}
+                            {d.dashboard_url && editingId !== d.id && (
+                              <a
+                                href={d.dashboard_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition hover:opacity-90"
+                                style={{
+                                  backgroundColor: 'var(--cl-accent-soft)',
+                                  color: 'var(--cl-accent-primary)',
+                                }}
+                                title={`打开 ${d.name} 的 Clash 控制面板`}
+                              >
+                                管理面板
+                                <ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            )}
                           </div>
-                        ) : (
+                          <div className="flex flex-wrap gap-3 font-mono text-[11px] text-[var(--cl-text-muted)]">
+                            <span>Token: {d.token_prefix}••••••••</span>
+                            <span>内核: {d.mihomo_version || '-'}</span>
+                            <span>Sniffer: {d.sniffer_enabled ? '开启' : '关闭'}</span>
+                            <span>最后心跳: {formatRelativeTime(d.last_seen_at)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2.5">
+                          <div className="mr-1 text-right font-mono tabular-nums">
+                            <div className="text-xs font-semibold" style={{ color: 'var(--cl-accent-primary)' }}>
+                              今日 {formatBytes(d.today_bytes)}
+                            </div>
+                            <div className="text-[10px] text-[var(--cl-text-muted)]">
+                              代理 {formatBytes(d.today_proxy_bytes)}
+                            </div>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              setEditingId(d.id)
-                              setEditingName(d.name)
-                              setEditingDashboardURL(d.dashboard_url || '')
-                            }}
-                            className="cursor-pointer text-sm font-semibold hover:underline"
-                            style={{ color: 'var(--cl-text-primary)' }}
-                            title="点击编辑设备名称与面板链接"
+                            onClick={() => setExpandedCmdId(cmdOpen ? '' : d.id)}
+                            className="cl-btn-secondary !h-7 !px-2 !text-[11px]"
+                            title="展开一键启动命令模板"
                           >
-                            {d.name}
+                            {cmdOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                            <Terminal className="h-3 w-3" />
+                            启动命令
                           </button>
-                        )}
-                        <span
-                          className="rounded px-1.5 py-0.5 font-mono text-[10px] text-[var(--cl-text-muted)]"
-                          style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
-                        >
-                          {d.os}
-                        </span>
-                        {d.tun_enabled && (
-                          <span
-                            className="rounded px-1.5 py-0.5 font-mono text-[10px]"
-                            style={{
-                              backgroundColor: 'var(--cl-accent-soft)',
-                              color: 'var(--cl-accent-primary)',
-                            }}
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(d)}
+                            className="rounded-lg border p-1.5 text-[var(--cl-text-muted)] transition hover:border-rose-500/40 hover:text-rose-400"
+                            style={{ borderColor: 'var(--cl-border-subtle)' }}
+                            title="删除设备"
                           >
-                            TUN
-                          </span>
-                        )}
-                        {d.dashboard_url && editingId !== d.id && (
-                          <a
-                            href={d.dashboard_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition hover:opacity-90"
-                            style={{
-                              backgroundColor: 'var(--cl-accent-soft)',
-                              color: 'var(--cl-accent-primary)',
-                            }}
-                            title={`打开 ${d.name} 的 Clash 控制面板`}
-                          >
-                            管理面板
-                            <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                        )}
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-3 font-mono text-[11px] text-[var(--cl-text-muted)]">
-                        <span>Token: {d.token_prefix}...</span>
-                        <span>内核: {d.mihomo_version || '-'}</span>
-                        <span>Sniffer: {d.sniffer_enabled ? '开启' : '关闭'}</span>
-                        <span>最后心跳: {formatRelativeTime(d.last_seen_at)}</span>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-4">
-                      <div className="text-right font-mono tabular-nums">
-                        <div className="text-xs font-semibold" style={{ color: 'var(--cl-accent-primary)' }}>
-                          今日 {formatBytes(d.today_bytes)}
+                      {diagAlerts.length > 0 && (
+                        <div
+                          className="mt-2.5 flex flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-[11px]"
+                          style={{
+                            borderColor: 'rgba(245, 158, 11, 0.30)',
+                            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                            color: 'var(--cl-status-warning)',
+                          }}
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                          <span>{diagAlerts.join('；')}</span>
                         </div>
-                        <div className="text-[10px] text-[var(--cl-text-muted)]">
-                          代理 {formatBytes(d.today_proxy_bytes)}
+                      )}
+
+                      {cmdOpen && (
+                        <div
+                          className="mt-2.5 space-y-1.5 rounded-lg border p-3 text-[11px]"
+                          style={{
+                            borderColor: 'var(--cl-border-subtle)',
+                            backgroundColor: 'var(--cl-bg-sidebar)',
+                          }}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-[var(--cl-text-muted)]">
+                            <span>
+                              服务端仅存储 Token 哈希不保存明文；请将下方占位符替换为创建时保存的密钥（前缀{' '}
+                              <code className="font-mono text-[var(--cl-text-primary)]">{d.token_prefix}</code>）：
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void copyText(`cmd:${d.id}`, starterTemplate)}
+                              className="cl-btn-secondary !h-6 !px-2 !text-[10px]"
+                            >
+                              {copiedKey === `cmd:${d.id}` ? (
+                                <Check className="h-3 w-3" style={{ color: 'var(--cl-status-success)' }} />
+                              ) : (
+                                <Copy className="h-3 w-3" />
+                              )}
+                              {copiedKey === `cmd:${d.id}` ? '已复制模板' : '复制命令模板'}
+                            </button>
+                          </div>
+                          <div
+                            className="overflow-x-auto whitespace-nowrap rounded border px-2.5 py-1.5 font-mono"
+                            style={{
+                              borderColor: 'var(--cl-border-subtle)',
+                              backgroundColor: 'var(--cl-bg-page)',
+                              color: 'var(--cl-text-secondary)',
+                            }}
+                          >
+                            {starterTemplate}
+                          </div>
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(d)}
-                        className="rounded-lg border p-1.5 text-[var(--cl-text-muted)] transition hover:border-rose-500/40 hover:text-rose-400"
-                        style={{ borderColor: 'var(--cl-border-subtle)' }}
-                        title="删除设备"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      )}
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -747,6 +913,136 @@ export function DevicesSettingsPage({
               )}
             </div>
 
+            {/* Privacy Mask Mode Card */}
+            <div className="cl-card flex items-center justify-between gap-3 rounded-xl p-4 sm:p-5">
+              <div className="flex items-start gap-2.5">
+                <Shield className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--cl-accent-primary)' }} />
+                <div>
+                  <h2 className="text-sm font-semibold">全局隐私脱敏模式（演示模式）</h2>
+                  <p className="mt-0.5 text-xs text-[var(--cl-text-muted)]">
+                    开启后所有表格、列表、KPI 副标题、桑基图及图表 Tooltip 中的域名与 IP 将自动打码（不影响复制真实规则），配置持久化保存于浏览器本地。
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={togglePrivacyMode}
+                className={privacyMode ? 'cl-btn-accent !h-8 shrink-0' : 'cl-btn-secondary !h-8 shrink-0'}
+              >
+                {privacyMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                {privacyMode ? '已开启脱敏' : '开启脱敏'}
+              </button>
+            </div>
+
+            {/* Storage Stats & Prune Card */}
+            <div className="cl-card space-y-3 rounded-xl p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
+                  <h2 className="text-sm font-semibold">数据库存储统计与清理</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadStorageStats()}
+                  disabled={storageLoading}
+                  className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
+                >
+                  {storageLoading ? '统计中...' : '刷新体积'}
+                </button>
+              </div>
+
+              {storageStats ? (
+                <div className="grid grid-cols-2 gap-2.5 font-mono text-xs sm:grid-cols-3">
+                  <div
+                    className="rounded-lg border p-2.5"
+                    style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
+                  >
+                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">数据库总占用</div>
+                    <div className="mt-1 text-sm font-bold tabular-nums" style={{ color: 'var(--cl-accent-primary)' }}>
+                      {formatBytes(storageStats.total_size_bytes)}
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-[var(--cl-text-muted)] tabular-nums">
+                      主库 {formatBytes(storageStats.db_size_bytes)} · WAL {formatBytes(storageStats.wal_size_bytes)}
+                    </div>
+                  </div>
+                  <div
+                    className="rounded-lg border p-2.5"
+                    style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
+                  >
+                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">明细 / 小时记录</div>
+                    <div className="mt-1 text-sm font-bold tabular-nums">
+                      {storageStats.minute_flows_rows + storageStats.hourly_flows_rows} 行
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-[var(--cl-text-muted)] tabular-nums">
+                      分钟 {storageStats.minute_flows_rows} · 小时 {storageStats.hourly_flows_rows}
+                    </div>
+                  </div>
+                  <div
+                    className="rounded-lg border p-2.5 col-span-2 sm:col-span-1"
+                    style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
+                  >
+                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">数据时间跨度</div>
+                    <div className="mt-1 truncate text-[11px] font-semibold tabular-nums">
+                      {storageStats.oldest_timestamp > 0 ? formatFullTime(storageStats.oldest_timestamp).slice(0, 10) : '-'}
+                    </div>
+                    <div className="mt-0.5 truncate text-[10px] text-[var(--cl-text-muted)] tabular-nums">
+                      至 {storageStats.newest_timestamp > 0 ? formatFullTime(storageStats.newest_timestamp).slice(0, 10) : '-'}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-[var(--cl-text-muted)]">正在获取存储占用...</div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <label className="flex items-center gap-1.5 text-xs text-[var(--cl-text-muted)]">
+                  <span>仅保留最近</span>
+                  <select
+                    value={retainDays}
+                    onChange={(e) => setRetainDays(Math.max(7, Number(e.target.value) || 30))}
+                    className="cl-input !h-7 px-2 font-mono text-xs"
+                  >
+                    <option value={7}>7 天</option>
+                    <option value={14}>14 天</option>
+                    <option value={30}>30 天</option>
+                    <option value={90}>90 天</option>
+                    <option value={180}>180 天</option>
+                    <option value={365}>365 天</option>
+                  </select>
+                </label>
+
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--cl-text-muted)]">
+                  <input
+                    type="checkbox"
+                    checked={pruneVacuum}
+                    onChange={(e) => setPruneVacuum(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded"
+                    style={{ accentColor: 'var(--cl-accent-primary)' }}
+                  />
+                  <span>清理后执行 VACUUM 回收磁盘空间</span>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setConfirmPruneOpen(true)}
+                  disabled={pruning}
+                  className="cl-btn-secondary !h-7 hover:border-rose-500/40 hover:text-rose-400"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  清理过期数据
+                </button>
+              </div>
+
+              {pruneNotice && (
+                <div
+                  className="text-xs"
+                  style={{ color: pruneNotice.ok ? 'var(--cl-status-success)' : 'var(--cl-status-danger)' }}
+                >
+                  {pruneNotice.text}
+                </div>
+              )}
+            </div>
+
             {/* Security Password Card */}
             {!localMode && (
               <form onSubmit={handleChangePwd} className="cl-card h-fit space-y-3 rounded-xl p-4 sm:p-5">
@@ -785,6 +1081,42 @@ export function DevicesSettingsPage({
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Two-step Prune Confirmation Modal */}
+      {confirmPruneOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-xs">
+          <div className="cl-popover w-full max-w-md rounded-xl border p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: 'var(--cl-status-warning)' }} />
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold">确认清理过期历史流量数据？</h3>
+                <p className="text-xs leading-relaxed text-[var(--cl-text-muted)]">
+                  即将永久删除 <span className="font-mono font-semibold text-[var(--cl-text-primary)]">{retainDays}</span> 天前的分钟级、小时级与每日汇总历史记录
+                  {pruneVacuum ? '，并执行 WAL 截断与 VACUUM 空间压缩' : '，并执行 WAL 截断'}。建议清理前先导出 `.json.gz` 备份。
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={pruning}
+                onClick={() => setConfirmPruneOpen(false)}
+                className="cl-btn-secondary !h-8"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={pruning}
+                onClick={() => void handleConfirmPrune()}
+                className="cl-btn-primary !h-8"
+              >
+                {pruning ? '清理中...' : '确认永久清理'}
+              </button>
+            </div>
           </div>
         </div>
       )}

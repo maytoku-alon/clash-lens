@@ -29,6 +29,7 @@ const (
 // Store wraps SQLite persistence, ingestion, retention maintenance, and analytics queries.
 type Store struct {
 	db     *sql.DB
+	dbPath string
 	mu     sync.Mutex
 	inMem  bool
 }
@@ -67,7 +68,7 @@ func Open(dbPath string) (*Store, error) {
 		}
 	}
 
-	s := &Store{db: db, inMem: inMem}
+	s := &Store{db: db, dbPath: dbPath, inMem: inMem}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)

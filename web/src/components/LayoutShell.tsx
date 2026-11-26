@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Activity,
   AppWindow,
@@ -11,6 +11,8 @@ import {
   Monitor,
   Moon,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Server,
   Settings,
   Smartphone,
@@ -52,6 +54,18 @@ const NAV_ITEMS: { key: NavTab; label: string; icon: typeof LayoutDashboard }[] 
 ]
 
 const PRESETS: RangePreset[] = ['1h', '24h', '7d', '30d', '90d', '1y']
+const SIDEBAR_STORAGE_KEY = 'clashlens_sidebar_collapsed'
+
+function readInitialSidebarCollapsed(): boolean {
+  try {
+    const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY)
+    if (saved === 'true') return true
+    if (saved === 'false') return false
+  } catch {
+    // ignore storage errors
+  }
+  return typeof window !== 'undefined' ? window.innerWidth < 1360 : false
+}
 
 function DeviceIcon({ icon }: { icon: string }) {
   switch (icon) {
@@ -86,16 +100,47 @@ export function LayoutShell({
   children,
 }: LayoutShellProps) {
   const { isDark, toggleColorMode } = useTheme()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readInitialSidebarCollapsed)
   const showAnalyticsBar = activeTab !== 'devices' && activeTab !== 'live'
   const selectedDevice = selectedDeviceId === 'all' ? undefined : devices.find((d) => d.id === selectedDeviceId)
+
+  useEffect(() => {
+    const handleResize = () => {
+      try {
+        if (localStorage.getItem(SIDEBAR_STORAGE_KEY) === null) {
+          setSidebarCollapsed(window.innerWidth < 1360)
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next))
+      } catch {
+        // ignore storage errors
+      }
+      return next
+    })
+  }
 
   return (
     <div className="flex min-h-screen text-[var(--cl-text-primary)]">
       {/* Left Navigation Rail */}
       {!kiosk && (
-        <aside className="cl-surface sticky top-0 flex h-screen w-16 shrink-0 flex-col justify-between border-r px-2 py-5 lg:w-60 lg:px-3.5">
+        <aside
+          className={`cl-surface sticky top-0 flex h-screen shrink-0 flex-col justify-between border-r py-5 transition-[width] duration-200 ${
+            sidebarCollapsed ? 'w-16 px-2' : 'w-[220px] px-3.5'
+          }`}
+        >
           <div>
-            <div className="mb-7 flex items-center gap-3 px-2">
+            <div className={`mb-7 flex items-center ${sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-2'}`}>
               <div
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm"
                 style={{
@@ -106,12 +151,14 @@ export function LayoutShell({
               >
                 <Activity className="h-[18px] w-[18px]" strokeWidth={2} />
               </div>
-              <div className="hidden lg:block">
-                <div className="text-[15px] font-bold tracking-tight">ClashLens</div>
-                <div className="text-xs text-[var(--cl-text-muted)]">
-                  {localMode ? '本地独立模式' : '流量透视监控'}
+              {!sidebarCollapsed && (
+                <div className="min-w-0 overflow-hidden whitespace-nowrap">
+                  <div className="text-[15px] font-bold tracking-tight">ClashLens</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">
+                    {localMode ? '本地独立模式' : '流量透视监控'}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <nav className="space-y-2">
@@ -123,9 +170,13 @@ export function LayoutShell({
                     type="button"
                     key={item.key}
                     onClick={() => onTabChange(item.key)}
-                    className={`flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-lg px-2 text-[15px] font-medium leading-none tracking-[-0.01em] transition lg:justify-start lg:px-3.5 ${
+                    title={sidebarCollapsed ? item.label : undefined}
+                    aria-label={item.label}
+                    className={`flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg text-[15px] font-medium leading-none tracking-[-0.01em] transition ${
+                      sidebarCollapsed ? 'justify-center px-2' : 'justify-start px-3.5'
+                    } ${
                       active
-                        ? ''
+                        ? 'cl-nav-active'
                         : 'text-[var(--cl-text-secondary)] hover:bg-[var(--cl-bg-surface-hover)] hover:text-[var(--cl-text-primary)]'
                     }`}
                     style={
@@ -138,25 +189,47 @@ export function LayoutShell({
                     }
                   >
                     <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
-                    <span className="hidden lg:inline">{item.label}</span>
+                    {!sidebarCollapsed && <span className="truncate whitespace-nowrap">{item.label}</span>}
                   </button>
                 )
               })}
             </nav>
           </div>
 
-          {!localMode && (
-            <div className="space-y-1 border-t pt-3" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+          <div className="space-y-1 border-t pt-3" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+            <button
+              type="button"
+              data-testid="sidebar-toggle"
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏（迷你模式）'}
+              aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+              className={`flex h-10 w-full cursor-pointer items-center gap-3 rounded-lg text-[14px] font-medium leading-none tracking-[-0.01em] text-[var(--cl-text-secondary)] transition hover:bg-[var(--cl-bg-surface-hover)] hover:text-[var(--cl-text-primary)] ${
+                sidebarCollapsed ? 'justify-center px-2' : 'justify-start px-3.5'
+              }`}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+              ) : (
+                <PanelLeftClose className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
+              )}
+              {!sidebarCollapsed && <span className="truncate whitespace-nowrap">收起侧边栏</span>}
+            </button>
+
+            {!localMode && (
               <button
                 type="button"
                 onClick={onLogout}
-                className="flex h-11 w-full cursor-pointer items-center justify-center gap-3 rounded-lg px-2 text-[14.5px] font-medium leading-none tracking-[-0.01em] text-[var(--cl-text-secondary)] transition hover:bg-rose-500/10 hover:text-rose-400 lg:justify-start lg:px-3.5"
+                title={sidebarCollapsed ? '退出登录' : undefined}
+                aria-label="退出登录"
+                className={`flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg text-[14.5px] font-medium leading-none tracking-[-0.01em] text-[var(--cl-text-secondary)] transition hover:bg-rose-500/10 hover:text-rose-400 ${
+                  sidebarCollapsed ? 'justify-center px-2' : 'justify-start px-3.5'
+                }`}
               >
                 <LogOut className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
-                <span className="hidden lg:inline">退出登录</span>
+                {!sidebarCollapsed && <span className="truncate whitespace-nowrap">退出登录</span>}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </aside>
       )}
 
@@ -348,7 +421,11 @@ export function LayoutShell({
           </div>
         </header>
 
-        <main className="cl-main-container mx-auto w-full flex-1 p-4 sm:p-6">{children}</main>
+        <div className="cl-main-shell w-full flex-1">
+          <main className="cl-main-container mx-auto w-full px-4 py-4 md:px-6 md:py-5 2xl:px-8 2xl:py-6">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   )

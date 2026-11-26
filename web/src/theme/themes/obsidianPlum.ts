@@ -33,6 +33,15 @@ export const obsidianPlumTheme: ThemeDefinition = {
       statusDanger: '#FDA4AF',
       chartPalette: ['#A78BFA', '#2DD4BF', '#F2A65A', '#F472B6', '#60A5FA', '#7BC96F', '#E5C07B', '#94A3B8'],
       heatmapScale: ['#201E2B', '#2E234D', '#4C3585', '#7C5AC2', '#A78BFA'],
+      semanticMetrics: {
+        proxy: '#A78BFA',
+        direct: '#34D399',
+        reject: '#FDA4AF',
+        download: '#818CF8',
+        upload: '#FBBF24',
+        actual: '#94A3B8',
+        billed: '#A78BFA',
+      },
     },
     light: {
       bgPage: '#E9E4DC',
@@ -51,6 +60,15 @@ export const obsidianPlumTheme: ThemeDefinition = {
       statusDanger: '#E11D48',
       chartPalette: ['#7C3AED', '#0D9488', '#D97706', '#DB2777', '#2563EB', '#16A34A', '#CA8A04', '#64748B'],
       heatmapScale: ['#E2DDD4', '#DDD6FE', '#C4B5FD', '#8B5CF6', '#6D28D9'],
+      semanticMetrics: {
+        proxy: '#7C3AED',
+        direct: '#059669',
+        reject: '#E11D48',
+        download: '#4F46E5',
+        upload: '#D97706',
+        actual: '#64748B',
+        billed: '#7C3AED',
+      },
     },
   },
 }

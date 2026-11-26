@@ -33,6 +33,15 @@ export const defaultTheme: ThemeDefinition = {
       statusDanger: '#f43f5e',
       chartPalette: ['#10b981', '#06b6d4', '#8b5cf6', '#f59e0b', '#ec4899', '#6366f1', '#14b8a6', '#71717a'],
       heatmapScale: ['#18181f', '#064e3b', '#047857', '#10b981', '#34d399'],
+      semanticMetrics: {
+        proxy: '#6366F1',
+        direct: '#10B981',
+        reject: '#F43F5E',
+        download: '#38BDF8',
+        upload: '#F59E0B',
+        actual: '#38BDF8',
+        billed: '#A78BFA',
+      },
     },
     light: {
       bgPage: '#E7EAEE',
@@ -51,6 +60,15 @@ export const defaultTheme: ThemeDefinition = {
       statusDanger: '#E11D48',
       chartPalette: ['#059669', '#0284C7', '#7C3AED', '#D97706', '#DB2777', '#4F46E5', '#0D9488', '#64748B'],
       heatmapScale: ['#DFE4EB', '#A7F3D0', '#34D399', '#059669', '#047857'],
+      semanticMetrics: {
+        proxy: '#4F46E5',
+        direct: '#059669',
+        reject: '#E11D48',
+        download: '#0284C7',
+        upload: '#D97706',
+        actual: '#0284C7',
+        billed: '#7C3AED',
+      },
     },
   },
 }

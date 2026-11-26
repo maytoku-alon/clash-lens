@@ -44,6 +44,39 @@ export interface DeviceInfo {
   dashboard_url?: string
 }
 
+export interface StorageStatsResponse {
+  db_size_bytes: number
+  wal_size_bytes: number
+  total_size_bytes: number
+  minute_totals_rows: number
+  minute_flows_rows: number
+  hourly_flows_rows: number
+  daily_summary_rows: number
+  ingest_batches_rows: number
+  oldest_timestamp: number
+  newest_timestamp: number
+  in_memory: boolean
+}
+
+export interface StoragePruneRequest {
+  retain_days: number
+  vacuum?: boolean
+}
+
+export interface StoragePruneResponse {
+  ok: boolean
+  retain_days: number
+  cutoff_timestamp: number
+  deleted_minute_rows: number
+  deleted_hourly_rows: number
+  deleted_daily_rows: number
+  deleted_batch_rows: number
+  total_deleted_rows: number
+  before_bytes: number
+  after_bytes: number
+  vacuumed: boolean
+}
+
 export interface CreateDeviceResponse {
   device: DeviceInfo
   token: string
@@ -384,6 +417,39 @@ export interface LiveDeviceSnapshot {
   inbound_mode: string
   mihomo_version: string
   dashboard_url?: string
+}
+
+export interface StorageStatsResponse {
+  db_size_bytes: number
+  wal_size_bytes: number
+  total_size_bytes: number
+  minute_totals_rows: number
+  minute_flows_rows: number
+  hourly_flows_rows: number
+  daily_summary_rows: number
+  ingest_batches_rows: number
+  oldest_timestamp: number
+  newest_timestamp: number
+  in_memory: boolean
+}
+
+export interface StoragePruneRequest {
+  retain_days: number
+  vacuum?: boolean
+}
+
+export interface StoragePruneResponse {
+  ok: boolean
+  retain_days: number
+  cutoff_timestamp: number
+  deleted_minute_rows: number
+  deleted_hourly_rows: number
+  deleted_daily_rows: number
+  deleted_batch_rows: number
+  total_deleted_rows: number
+  before_bytes: number
+  after_bytes: number
+  vacuumed: boolean
 }
 
 export interface LiveHubSnapshot {

@@ -597,3 +597,72 @@ func TestDeviceDashboardURLAndMigration(t *testing.T) {
 		t.Fatalf("backup device missing DashboardURL: %+v", archive.Devices)
 	}
 }
+
+func TestStorageStatsAndPrune(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "storage_prune.db")
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	dev, _, err := st.CreateDevice(ctx, protocol.CreateDeviceRequest{Name: "Prune-PC", OS: "windows"})
+	if err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+
+	now := time.Now().Unix()
+	oldBucket := ((now - 45*86400) / 60) * 60
+	recentBucket := ((now - 2*86400) / 60) * 60
+
+	if _, err := st.IngestBatch(ctx, dev.ID, protocol.IngestBatchRequest{
+		BatchID: "old-batch",
+		MinuteTotals: []protocol.MinuteTotalRecord{
+			{BucketTS: oldBucket, ProxyDown: 2048, ConnCount: 4},
+			{BucketTS: recentBucket, ProxyDown: 4096, ConnCount: 8},
+		},
+		MinuteFlows: []protocol.FlowRecord{
+			{
+				BucketTS: oldBucket, ProcessName: "chrome.exe", ProcessDisplay: "Chrome",
+				RootDomain: "example.com", Host: "www.example.com", EgressNode: "HK",
+				ProxyGroup: "Proxy", RouteType: "PROXY", InboundMode: "TUN", DownBytes: 2048, ConnCount: 4,
+			},
+			{
+				BucketTS: recentBucket, ProcessName: "chrome.exe", ProcessDisplay: "Chrome",
+				RootDomain: "github.com", Host: "api.github.com", EgressNode: "HK",
+				ProxyGroup: "Proxy", RouteType: "PROXY", InboundMode: "TUN", DownBytes: 4096, ConnCount: 8,
+			},
+		},
+	}, 480); err != nil {
+		t.Fatalf("IngestBatch: %v", err)
+	}
+
+	stats, err := st.GetStorageStats(ctx)
+	if err != nil {
+		t.Fatalf("GetStorageStats: %v", err)
+	}
+	if stats.MinuteTotalsRows != 2 || stats.MinuteFlowsRows != 2 || stats.HourlyFlowsRows != 2 || stats.TotalSizeBytes <= 0 {
+		t.Fatalf("unexpected initial storage stats: %+v", stats)
+	}
+
+	if _, err := st.PruneStorage(ctx, 6, false, 480); !errors.Is(err, store.ErrInvalidRetainDays) {
+		t.Fatalf("expected ErrInvalidRetainDays for retain_days=6, got %v", err)
+	}
+
+	res, err := st.PruneStorage(ctx, 30, true, 480)
+	if err != nil {
+		t.Fatalf("PruneStorage: %v", err)
+	}
+	if res.DeletedMinuteRows != 2 || res.DeletedHourlyRows != 1 || res.DeletedDailyRows != 1 {
+		t.Fatalf("unexpected prune counts: %+v", res)
+	}
+
+	afterStats, err := st.GetStorageStats(ctx)
+	if err != nil {
+		t.Fatalf("GetStorageStats after prune: %v", err)
+	}
+	if afterStats.MinuteTotalsRows != 1 || afterStats.MinuteFlowsRows != 1 || afterStats.HourlyFlowsRows != 1 {
+		t.Fatalf("unexpected remaining rows after prune: %+v", afterStats)
+	}
+}

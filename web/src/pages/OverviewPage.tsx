@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type * as echarts from 'echarts'
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Flame, Globe, Layers, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Flame, Globe, Layers, X, Zap } from 'lucide-react'
 import { buildOverviewViewModel } from '../adapters/trafficAdapter'
 import type { QueryParams } from '../api/trafficApi'
 import { EChartBox } from '../components/EChartBox'
@@ -11,6 +11,7 @@ import { buildChartTheme } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
 import type { GroupByDim, LiveHubSnapshot } from '../types/api'
 import { formatBytes, formatFullTime, formatSpeed } from '../utils/format'
+import { maskHostOrDomain } from '../utils/privacy'
 
 interface OverviewPageProps {
   query: QueryParams
@@ -21,6 +22,23 @@ interface OverviewPageProps {
   onOpenDomain: (rootDomain: string) => void
 }
 
+const DISMISSED_WARNINGS_KEY = 'clashlens_dismissed_warnings'
+
+function warningKey(w: { code: string; device_id: string }): string {
+  return `${w.code}:${w.device_id}`
+}
+
+function readDismissedWarnings(): string[] {
+  try {
+    const raw = localStorage.getItem(DISMISSED_WARNINGS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 export function OverviewPage({
   query,
   live,
@@ -29,7 +47,7 @@ export function OverviewPage({
   onOpenApp,
   onOpenDomain,
 }: OverviewPageProps) {
-  const { theme, tokens, colorMode } = useTheme()
+  const { theme, tokens, colorMode, privacyMode } = useTheme()
   const chartTheme = useMemo(
     () => buildChartTheme(tokens, colorMode, theme.chartEffects),
     [tokens, colorMode, theme.chartEffects],
@@ -37,9 +55,43 @@ export function OverviewPage({
 
   const [groupBy, setGroupBy] = useState<GroupByDim>('process')
   const [rankTab, setRankTab] = useState<'apps' | 'domains'>('apps')
+  const [dismissedWarnings, setDismissedWarnings] = useState<string[]>(readDismissedWarnings)
 
   const { overview, heatmap, timeseries, bursts, apps, domains, loading } = useOverviewData(query, groupBy)
   const { todayProxyPct, quotaPct, hasQuota } = useMemo(() => buildOverviewViewModel(overview), [overview])
+
+  useEffect(() => {
+    if (!overview || query.deviceId !== 'all') return
+    const activeKeys = new Set((overview.warnings ?? []).map(warningKey))
+    setDismissedWarnings((prev) => {
+      const next = prev.filter((k) => activeKeys.has(k))
+      if (next.length === prev.length) return prev
+      try {
+        localStorage.setItem(DISMISSED_WARNINGS_KEY, JSON.stringify(next))
+      } catch {
+        // ignore storage errors
+      }
+      return next
+    })
+  }, [overview, query.deviceId])
+
+  const visibleWarnings = useMemo(
+    () => (overview?.warnings ?? []).filter((w) => !dismissedWarnings.includes(warningKey(w))),
+    [overview?.warnings, dismissedWarnings],
+  )
+
+  const dismissWarning = (key: string) => {
+    setDismissedWarnings((prev) => {
+      if (prev.includes(key)) return prev
+      const next = [...prev, key]
+      try {
+        localStorage.setItem(DISMISSED_WARNINGS_KEY, JSON.stringify(next))
+      } catch {
+        // ignore storage errors
+      }
+      return next
+    })
+  }
 
   const sparkOption = useMemo<echarts.EChartsCoreOption>(() => {
     const pts = rateHistory.length > 0 ? rateHistory : [{ down: 0, up: 0 }]
@@ -70,28 +122,44 @@ export function OverviewPage({
   return (
     <div className="space-y-4">
       {/* Diagnostic Warnings (e.g. TUN without Sniffer) */}
-      {overview?.warnings?.map((w) => (
-        <div
-          key={`${w.code}-${w.device_id}`}
-          className="flex items-start gap-3 rounded-xl border px-4 py-3 text-xs"
-          style={{
-            borderColor: 'var(--cl-border-focus)',
-            backgroundColor: 'var(--cl-accent-soft)',
-            color: 'var(--cl-status-warning)',
-          }}
-        >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <div className="font-semibold">{w.title}</div>
-            <div className="mt-0.5 opacity-90">{w.message}</div>
+      {visibleWarnings.map((w) => {
+        const key = warningKey(w)
+        return (
+          <div
+            key={key}
+            data-testid="overview-warning-banner"
+            className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-xs"
+            style={{
+              borderColor: 'var(--cl-border-focus)',
+              backgroundColor: 'var(--cl-accent-soft)',
+              color: 'var(--cl-status-warning)',
+            }}
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="min-w-0">
+                <div className="font-semibold">{w.title}</div>
+                <div className="mt-0.5 opacity-90">{w.message}</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="dismiss-warning-btn"
+              onClick={() => dismissWarning(key)}
+              className="shrink-0 cursor-pointer rounded-md p-1 opacity-70 transition hover:bg-black/10 hover:opacity-100"
+              title="关闭此异常提示（若其他设备出现异常将自动提醒；设备页始终保留诊断信息）"
+              aria-label={`关闭 ${w.device_name || w.title} 异常提示`}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-        </div>
-      ))}
+        )
+      })}
 
       {/* Unified CSS Grid layout container: classic/bento reorders via grid-area without unmounting charts */}
       <div className="cl-overview-grid">
         {/* Top 4 Bento KPI Cards */}
-        <div className="cl-area-kpi grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="cl-area-kpi cl-kpi-grid">
           {/* Card 1: Today Traffic */}
           <div className="cl-card rounded-xl p-4">
             <div className="flex items-center justify-between text-xs text-[var(--cl-text-muted)]">
@@ -126,7 +194,7 @@ export function OverviewPage({
                 style={{ backgroundColor: 'var(--cl-border-subtle)' }}
               >
                 <div
-                  className="h-full rounded-full transition-all"
+                  className="cl-progress-fill h-full rounded-full transition-all"
                   style={{ width: `${todayProxyPct}%`, backgroundColor: 'var(--cl-accent-primary)' }}
                 />
               </div>
@@ -237,7 +305,7 @@ export function OverviewPage({
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--cl-text-muted)]">
                   <span className="truncate font-mono">
-                    {overview.top_consumer.root_domain}
+                    {maskHostOrDomain(overview.top_consumer.root_domain, privacyMode)}
                     {overview.top_consumer.service_tag ? ` · ${overview.top_consumer.service_tag}` : ''}
                   </span>
                   <span className="shrink-0 text-[11px]" style={{ color: 'var(--cl-accent-primary)' }}>
@@ -285,7 +353,7 @@ export function OverviewPage({
               该时间范围暂无明显流量明细
             </div>
           ) : (
-            <div className="cl-list-stack space-y-2">
+            <div className="cl-list-stack cl-thin-scroll cl-bursts-scroll min-h-0 flex-1 space-y-2">
               {bursts.items.map((b, idx) => (
                 <button
                   type="button"
@@ -301,7 +369,7 @@ export function OverviewPage({
                         className="truncate font-mono text-xs"
                         style={{ color: 'var(--cl-accent-primary)' }}
                       >
-                        {b.root_domain}
+                        {maskHostOrDomain(b.root_domain, privacyMode)}
                       </span>
                       {b.service_tag && (
                         <span
@@ -391,7 +459,7 @@ export function OverviewPage({
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="truncate font-semibold">{app.process_display}</span>
                         <span className="truncate font-mono text-[11px] text-[var(--cl-text-muted)]">
-                          {app.top_domains.map((d) => d.root_domain).join(' · ')}
+                          {app.top_domains.map((d) => maskHostOrDomain(d.root_domain, privacyMode)).join(' · ')}
                         </span>
                       </div>
                       <span
@@ -407,7 +475,7 @@ export function OverviewPage({
                         style={{ backgroundColor: 'var(--cl-border-subtle)' }}
                       >
                         <div
-                          className="h-full rounded-full"
+                          className="cl-progress-fill h-full rounded-full"
                           style={{
                             width: `${Math.max(2, app.share_pct)}%`,
                             backgroundColor: 'var(--cl-accent-primary)',
@@ -435,7 +503,9 @@ export function OverviewPage({
                 >
                   <div className="flex items-center justify-between gap-2 text-xs">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate font-mono font-semibold">{dom.root_domain}</span>
+                      <span className="truncate font-mono font-semibold">
+                        {maskHostOrDomain(dom.root_domain, privacyMode)}
+                      </span>
                       {dom.service_tag && (
                         <span
                           className="shrink-0 rounded px-1.5 py-0.5 text-[10px]"
@@ -461,7 +531,7 @@ export function OverviewPage({
                       style={{ backgroundColor: 'var(--cl-border-subtle)' }}
                     >
                       <div
-                        className="h-full rounded-full"
+                        className="cl-progress-fill h-full rounded-full"
                         style={{
                           width: `${Math.max(2, dom.share_pct)}%`,
                           backgroundColor: 'var(--cl-status-success)',

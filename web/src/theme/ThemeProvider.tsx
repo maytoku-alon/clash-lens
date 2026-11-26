@@ -13,6 +13,7 @@ import type { ColorMode, LayoutPreset, ThemeDefinition, ThemeTokens } from './ty
 const STORAGE_THEME_ID = 'clashlens_theme_id'
 const STORAGE_COLOR_MODE = 'clashlens_color_mode'
 const STORAGE_LAYOUT = 'clashlens_layout'
+const STORAGE_PRIVACY_MODE = 'clashlens_privacy_mode'
 const LEGACY_COLOR_MODE_KEY = 'clashlens_theme'
 
 interface ThemeContextValue {
@@ -21,12 +22,23 @@ interface ThemeContextValue {
   colorMode: ColorMode
   isDark: boolean
   layout: LayoutPreset
+  privacyMode: boolean
   tokens: ThemeTokens
   availableThemes: ThemeDefinition[]
   setThemeId: (id: string) => void
   setColorMode: (mode: ColorMode) => void
   toggleColorMode: () => void
   setLayout: (layout: LayoutPreset) => void
+  setPrivacyMode: (enabled: boolean) => void
+  togglePrivacyMode: () => void
+}
+
+function readInitialPrivacyMode(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_PRIVACY_MODE) === 'true'
+  } catch {
+    return false
+  }
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
@@ -101,6 +113,13 @@ function applyThemeToDOM(theme: ThemeDefinition, mode: ColorMode, layout: Layout
     '--cl-status-success': tokens.statusSuccess,
     '--cl-status-warning': tokens.statusWarning,
     '--cl-status-danger': tokens.statusDanger,
+    '--cl-metric-proxy': tokens.semanticMetrics.proxy,
+    '--cl-metric-direct': tokens.semanticMetrics.direct,
+    '--cl-metric-reject': tokens.semanticMetrics.reject,
+    '--cl-metric-download': tokens.semanticMetrics.download,
+    '--cl-metric-upload': tokens.semanticMetrics.upload,
+    '--cl-metric-actual': tokens.semanticMetrics.actual,
+    '--cl-metric-billed': tokens.semanticMetrics.billed,
     '--cl-font-sans': theme.typography.fontSans,
     '--cl-font-mono': theme.typography.fontMono,
     '--cl-font-size-base': theme.typography.baseSize,
@@ -123,6 +142,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeId, setThemeIdState] = useState<string>(() => readInitialThemeId())
   const [colorMode, setColorModeState] = useState<ColorMode>(() => readInitialColorMode())
   const [layout, setLayoutState] = useState<LayoutPreset>(() => readInitialLayout(themeId))
+  const [privacyMode, setPrivacyModeState] = useState<boolean>(() => readInitialPrivacyMode())
 
   const theme = useMemo(() => themeRegistry.get(themeId), [themeId])
   const tokens = useMemo(() => theme.modes[colorMode], [theme, colorMode])
@@ -140,10 +160,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [theme, colorMode, layout])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_PRIVACY_MODE, privacyMode ? 'true' : 'false')
+    } catch {
+      // ignore storage errors
+    }
+  }, [privacyMode])
+
   const setThemeId = useCallback((id: string) => {
     if (themeRegistry.has(id)) {
       setThemeIdState(id)
-      setLayoutState(themeRegistry.get(id).defaultLayout)
     }
   }, [])
 
@@ -159,6 +186,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setLayoutState(nextLayout)
   }, [])
 
+  const setPrivacyMode = useCallback((enabled: boolean) => {
+    setPrivacyModeState(enabled)
+  }, [])
+
+  const togglePrivacyMode = useCallback(() => {
+    setPrivacyModeState((prev) => !prev)
+  }, [])
+
   const value = useMemo<ThemeContextValue>(
     () => ({
       themeId: theme.id,
@@ -166,14 +201,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       colorMode,
       isDark: colorMode === 'dark',
       layout,
+      privacyMode,
       tokens,
       availableThemes,
       setThemeId,
       setColorMode,
       toggleColorMode,
       setLayout,
+      setPrivacyMode,
+      togglePrivacyMode,
     }),
-    [theme, colorMode, layout, tokens, availableThemes, setThemeId, setColorMode, toggleColorMode, setLayout],
+    [
+      theme,
+      colorMode,
+      layout,
+      privacyMode,
+      tokens,
+      availableThemes,
+      setThemeId,
+      setColorMode,
+      toggleColorMode,
+      setLayout,
+      setPrivacyMode,
+      togglePrivacyMode,
+    ],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

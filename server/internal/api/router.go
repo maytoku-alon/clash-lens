@@ -80,6 +80,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("PUT /api/v1/settings", s.requireAdmin(http.HandlerFunc(s.handlePutSettings)))
 	mux.Handle("GET /api/v1/backup/export", s.requireAdmin(http.HandlerFunc(s.handleBackupExport)))
 	mux.Handle("POST /api/v1/backup/import", s.requireAdmin(http.HandlerFunc(s.handleBackupImport)))
+	mux.Handle("GET /api/v1/storage/stats", s.requireAdmin(http.HandlerFunc(s.handleStorageStats)))
+	mux.Handle("POST /api/v1/storage/prune", s.requireAdmin(http.HandlerFunc(s.handleStoragePrune)))
 
 	mux.Handle("GET /api/v1/analytics/overview", s.requireAdmin(http.HandlerFunc(s.handleOverview)))
 	mux.Handle("GET /api/v1/analytics/heatmap", s.requireAdmin(http.HandlerFunc(s.handleHeatmap)))
@@ -590,6 +592,33 @@ func (s *Server) handleLiveSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+func (s *Server) handleStorageStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.store.GetStorageStats(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (s *Server) handleStoragePrune(w http.ResponseWriter, r *http.Request) {
+	var req protocol.StoragePruneRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	res, err := s.store.PruneStorage(r.Context(), req.RetainDays, req.Vacuum, s.cfg.TZOffsetMinutes)
+	if errors.Is(err, store.ErrInvalidRetainDays) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) handleLiveWS(w http.ResponseWriter, r *http.Request) {

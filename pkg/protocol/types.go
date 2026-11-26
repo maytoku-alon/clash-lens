@@ -617,3 +617,39 @@ type BackupImportResult struct {
 	DailySummaryRows int  `json:"daily_summary_rows"`
 	SettingsImported bool `json:"settings_imported"`
 }
+
+// StorageStatsResponse reports database file sizes, row counts, and earliest/latest timestamps.
+type StorageStatsResponse struct {
+	DBSizeBytes       int64 `json:"db_size_bytes"`
+	WALSizeBytes      int64 `json:"wal_size_bytes"`
+	TotalSizeBytes    int64 `json:"total_size_bytes"`
+	MinuteTotalsRows  int64 `json:"minute_totals_rows"`
+	MinuteFlowsRows   int64 `json:"minute_flows_rows"`
+	HourlyFlowsRows   int64 `json:"hourly_flows_rows"`
+	DailySummaryRows  int64 `json:"daily_summary_rows"`
+	IngestBatchesRows int64 `json:"ingest_batches_rows"`
+	OldestTimestamp   int64 `json:"oldest_timestamp"`
+	NewestTimestamp   int64 `json:"newest_timestamp"`
+	InMemory          bool  `json:"in_memory"`
+}
+
+// StoragePruneRequest requests pruning telemetry older than RetainDays (>= 7).
+type StoragePruneRequest struct {
+	RetainDays int  `json:"retain_days"`
+	Vacuum     bool `json:"vacuum"`
+}
+
+// StoragePruneResponse reports rows removed and database size change after pruning.
+type StoragePruneResponse struct {
+	OK                bool  `json:"ok"`
+	RetainDays        int   `json:"retain_days"`
+	CutoffTimestamp   int64 `json:"cutoff_timestamp"`
+	DeletedMinuteRows int64 `json:"deleted_minute_rows"`
+	DeletedHourlyRows int64 `json:"deleted_hourly_rows"`
+	DeletedDailyRows  int64 `json:"deleted_daily_rows"`
+	DeletedBatchRows  int64 `json:"deleted_batch_rows"`
+	TotalDeletedRows  int64 `json:"total_deleted_rows"`
+	BeforeBytes       int64 `json:"before_bytes"`
+	AfterBytes        int64 `json:"after_bytes"`
+	Vacuumed          bool  `json:"vacuumed"`
+}
