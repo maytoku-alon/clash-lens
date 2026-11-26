@@ -79,6 +79,7 @@ function applyThemeToDOM(theme: ThemeDefinition, mode: ColorMode, layout: Layout
   root.setAttribute('data-theme', theme.id)
   root.setAttribute('data-mode', mode)
   root.setAttribute('data-layout', layout)
+  root.style.colorScheme = mode
   if (mode === 'dark') {
     root.classList.add('dark')
   } else {

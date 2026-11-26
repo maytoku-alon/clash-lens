@@ -436,7 +436,7 @@ export function AppsExplorerPage({
                         <th className="px-4 py-2.5 text-right font-medium">下行 / 上行</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+                    <tbody className="divide-y divide-[var(--cl-border-subtle)]">
                       {appDetail.root_domains.map((grp) => {
                         const open = !!expandedKeys[grp.root_domain]
                         return (
@@ -660,7 +660,7 @@ export function AppsExplorerPage({
                         <th className="px-4 py-2.5 text-right font-medium">下行 / 上行</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+                    <tbody className="divide-y divide-[var(--cl-border-subtle)]">
                       {domainDetail.apps.map((appRow) => {
                         const open = !!expandedKeys[appRow.process_display]
                         return (

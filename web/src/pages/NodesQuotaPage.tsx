@@ -219,7 +219,7 @@ export function NodesQuotaPage({
             </div>
             <span className="text-[11px] text-[var(--cl-text-muted)]">代理消耗最高的流向条目</span>
           </div>
-          <div className="divide-y" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+          <div className="divide-y divide-[var(--cl-border-subtle)]">
             {!data || data.proxy_audit.length === 0 ? (
               <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">当前范围无代理流量记录</div>
             ) : (
@@ -298,7 +298,7 @@ export function NodesQuotaPage({
                   <th className="px-4 py-2 text-right font-medium">连接数</th>
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+              <tbody className="divide-y divide-[var(--cl-border-subtle)]">
                 {!data || data.rules.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="py-10 text-center text-[var(--cl-text-muted)]">

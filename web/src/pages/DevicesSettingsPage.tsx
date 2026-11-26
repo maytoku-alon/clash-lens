@@ -375,7 +375,7 @@ export function DevicesSettingsPage({
             >
               <h3 className="text-sm font-semibold">已注册设备列表</h3>
             </div>
-            <div className="divide-y" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+            <div className="divide-y divide-[var(--cl-border-subtle)]">
               {devices.length === 0 ? (
                 <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">
                   尚未添加任何设备，请在上方创建首个设备 Token

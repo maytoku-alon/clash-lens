@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>ClashLens — 多端 Clash 流量透视大屏</title>
     <script>
       !(function () {
@@ -22,6 +23,7 @@
           r.setAttribute('data-theme', themeId);
           r.setAttribute('data-mode', mode);
           r.setAttribute('data-layout', layout);
+          r.style.colorScheme = mode;
           if (mode === 'dark') {
             r.classList.add('dark');
           } else {

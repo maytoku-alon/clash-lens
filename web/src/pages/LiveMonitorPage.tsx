@@ -238,7 +238,7 @@ export function LiveMonitorPage({
                 <th className="w-[100px] px-4 py-2 text-right font-medium">连接累计</th>
               </tr>
             </thead>
-            <tbody className="divide-y" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+            <tbody className="divide-y divide-[var(--cl-border-subtle)]">
               {!live || live.top_active.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-10 text-center text-[var(--cl-text-muted)]">

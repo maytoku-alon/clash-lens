@@ -92,13 +92,13 @@ export function buildChartTheme(tokens: ThemeTokens, mode: ColorMode): ChartThem
       down: downColor,
       up: upColor,
       downArea: withAlpha(downColor, mode === 'dark' ? 0.16 : 0.12),
-      upArea: tokens.accentSoft,
+      upArea: withAlpha(upColor, mode === 'dark' ? 0.14 : 0.10),
     },
     sankeyColors: {
       app: palette[0] ?? tokens.accentPrimary,
       domain: palette[1] ?? tokens.statusSuccess,
-      direct: palette[3] ?? tokens.textMuted,
-      proxy: tokens.accentPrimary,
+      direct: palette[2] ?? tokens.textMuted,
+      proxy: palette[4] ?? tokens.accentPrimary,
     },
   }
 }

@@ -5,20 +5,21 @@
 @layer base {
   :root,
   [data-mode="light"] {
-    --cl-bg-page: #f8fafc;
-    --cl-bg-sidebar: #ffffff;
-    --cl-bg-surface: #ffffff;
-    --cl-bg-surface-hover: #f1f5f9;
-    --cl-border-subtle: rgba(15, 23, 42, 0.09);
-    --cl-border-focus: rgba(16, 185, 129, 0.5);
-    --cl-text-primary: #0f172a;
-    --cl-text-secondary: #334155;
-    --cl-text-muted: #64748b;
-    --cl-accent-primary: #10b981;
-    --cl-accent-soft: rgba(16, 185, 129, 0.12);
+    color-scheme: light;
+    --cl-bg-page: #E7EAEE;
+    --cl-bg-sidebar: #DFE3E9;
+    --cl-bg-surface: #F1F3F6;
+    --cl-bg-surface-hover: #E5E9F0;
+    --cl-border-subtle: rgba(15, 23, 42, 0.10);
+    --cl-border-focus: rgba(5, 150, 105, 0.45);
+    --cl-text-primary: #1E293B;
+    --cl-text-secondary: #475569;
+    --cl-text-muted: #64748B;
+    --cl-accent-primary: #059669;
+    --cl-accent-soft: rgba(5, 150, 105, 0.12);
     --cl-status-success: #059669;
-    --cl-status-warning: #d97706;
-    --cl-status-danger: #e11d48;
+    --cl-status-warning: #D97706;
+    --cl-status-danger: #E11D48;
     --cl-font-sans: "Inter", "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", sans-serif;
     --cl-font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --cl-font-size-base: 14px;
@@ -34,6 +35,7 @@
 
   .dark,
   [data-mode="dark"] {
+    color-scheme: dark;
     --cl-bg-page: #09090b;
     --cl-bg-sidebar: #0f0f13;
     --cl-bg-surface: #141419;
@@ -69,20 +71,26 @@
   }
 
   [data-theme="obsidian-plum"][data-mode="light"] {
-    --cl-bg-page: #F7F6F3;
-    --cl-bg-sidebar: #EFECE6;
-    --cl-bg-surface: #FFFFFF;
-    --cl-bg-surface-hover: #F3F1EC;
-    --cl-border-subtle: rgba(24, 22, 34, 0.08);
-    --cl-border-focus: rgba(124, 58, 237, 0.30);
-    --cl-text-primary: #1C1A26;
-    --cl-text-secondary: #5E5A70;
-    --cl-text-muted: #8F8BA3;
-    --cl-accent-primary: #7C3AED;
-    --cl-accent-soft: rgba(124, 58, 237, 0.10);
+    --cl-bg-page: #E9E4DC;
+    --cl-bg-sidebar: #E0DAD0;
+    --cl-bg-surface: #F2EEE7;
+    --cl-bg-surface-hover: #E6E1D8;
+    --cl-border-subtle: rgba(28, 25, 38, 0.10);
+    --cl-border-focus: rgba(109, 40, 217, 0.35);
+    --cl-text-primary: #24212E;
+    --cl-text-secondary: #555066;
+    --cl-text-muted: #78728A;
+    --cl-accent-primary: #6D28D9;
+    --cl-accent-soft: rgba(109, 40, 217, 0.10);
     --cl-status-success: #059669;
-    --cl-status-warning: #D97706;
+    --cl-status-warning: #C26D0A;
     --cl-status-danger: #E11D48;
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--cl-border-subtle);
   }
 
   html {
@@ -150,13 +158,14 @@
 }
 
 [data-theme="obsidian-plum"][data-mode="dark"] .cl-btn-primary {
-  background-color: var(--cl-accent-primary);
-  color: #0b0a0f;
+  background-color: #7c3aed;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  color: #ffffff;
   box-shadow: none;
 }
 [data-theme="obsidian-plum"][data-mode="dark"] .cl-btn-primary:hover {
-  filter: brightness(1.06);
-  background-color: var(--cl-accent-primary);
+  background-color: #6d28d9;
+  border-color: rgba(167, 139, 250, 0.55);
 }
 
 [data-theme="obsidian-plum"][data-mode="light"] .cl-btn-primary {
@@ -264,13 +273,17 @@ a:focus-visible {
   .cl-btn-primary:hover {
     background-color: #1e293b;
   }
-  .dark .cl-btn-primary {
-    background-color: #f4f4f5;
-    color: #09090b;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  .dark .cl-btn-primary,
+  [data-mode="dark"] .cl-btn-primary {
+    background-color: #047857;
+    border: 1px solid rgba(16, 185, 129, 0.45);
+    color: #ecfdf5;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   }
-  .dark .cl-btn-primary:hover {
-    background-color: #ffffff;
+  .dark .cl-btn-primary:hover,
+  [data-mode="dark"] .cl-btn-primary:hover {
+    background-color: #059669;
+    border-color: rgba(52, 211, 153, 0.55);
   }
 
   .cl-btn-secondary {
