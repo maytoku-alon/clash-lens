@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as echarts from 'echarts'
-import { Activity, Check, Copy, ExternalLink, Pause, Play, Search, ShieldAlert, TrendingUp, Wifi, X } from 'lucide-react'
+import { Activity, Check, Copy, ExternalLink, Lock, Pause, Play, Search, ShieldAlert, TrendingUp, Wifi, X } from 'lucide-react'
 import { EChartBox } from '../components/EChartBox'
 import { buildChartTheme, buildSpeedValueAxis } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
@@ -12,6 +12,91 @@ interface LiveMonitorPageProps {
   live: LiveHubSnapshot | null
   rateHistory: { time: string; down: number; up: number }[]
   onOpenApp: (processDisplay: string) => void
+}
+
+const STICKY_TTL_MS = 8000
+const EMA_ALPHA = 0.45
+const HYSTERESIS_RATIO = 1.15
+
+type ConnSortMode = 'total' | 'speed'
+
+interface StickyProcRow {
+  process: string
+  downBps: number
+  upBps: number
+  totalBps: number
+  emaBps: number
+  conns: number
+  lastSeenAt: number
+  idle: boolean
+}
+
+interface StickyConnRow extends LiveConnectionItem {
+  key: string
+  connCount: number
+  lastSeenAt: number
+  idle: boolean
+  emaBps: number
+}
+
+function connStableKey(c: LiveConnectionItem): string {
+  return `${c.device_id || ''}|${c.process_display}|${c.host}|${c.egress_node}|${c.route_type}|${c.inbound_mode}`
+}
+
+function sortWithHysteresis<T extends { idle: boolean; emaBps: number }>(
+  prevKeys: string[],
+  itemsByKey: Map<string, T>,
+  getKey: (item: T) => string,
+): T[] {
+  const ordered: T[] = []
+  const seen = new Set<string>()
+  for (const k of prevKeys) {
+    const item = itemsByKey.get(k)
+    if (item) {
+      ordered.push(item)
+      seen.add(k)
+    }
+  }
+
+  // Promote lower entries only if incumbent went idle or challenger exceeds by HYSTERESIS_RATIO
+  for (let i = 1; i < ordered.length; i++) {
+    let j = i
+    while (j > 0) {
+      const challenger = ordered[j]
+      const incumbent = ordered[j - 1]
+      const canPromote =
+        !challenger.idle &&
+        (incumbent.idle || challenger.emaBps > incumbent.emaBps * HYSTERESIS_RATIO)
+      if (!canPromote) break
+      ordered[j - 1] = challenger
+      ordered[j] = incumbent
+      j--
+    }
+  }
+
+  const fresh: T[] = []
+  for (const item of itemsByKey.values()) {
+    if (!seen.has(getKey(item))) {
+      fresh.push(item)
+    }
+  }
+  fresh.sort((a, b) => Number(a.idle) - Number(b.idle) || b.emaBps - a.emaBps)
+
+  // Splice fresh active rows into ranked list while keeping existing relative slots calm
+  const combined = [...ordered, ...fresh]
+  for (let i = ordered.length; i < combined.length; i++) {
+    let j = i
+    while (j > 0) {
+      const cur = combined[j]
+      const prev = combined[j - 1]
+      const shouldMoveUp = !cur.idle && (prev.idle || cur.emaBps > prev.emaBps * HYSTERESIS_RATIO)
+      if (!shouldMoveUp) break
+      combined[j - 1] = cur
+      combined[j] = prev
+      j--
+    }
+  }
+  return combined
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {
@@ -55,46 +140,228 @@ export function LiveMonitorPage({
   )
 
   const [paused, setPaused] = useState(false)
-  const [frozenRows, setFrozenRows] = useState<LiveConnectionItem[]>([])
+  const [sortMode, setSortMode] = useState<ConnSortMode>('total')
   const [searchQuery, setSearchQuery] = useState('')
   const [copiedRowKey, setCopiedRowKey] = useState('')
 
-  const handleTogglePause = () => {
-    if (!paused) {
-      setFrozenRows(live?.top_active ?? [])
-      setPaused(true)
-    } else {
-      setPaused(false)
-    }
-  }
+  // Anti-jitter state for Top 5 Active Processes
+  const [procRows, setProcRows] = useState<StickyProcRow[]>([])
+  const [procHoverLocked, setProcHoverLocked] = useState(false)
+  const procLockedOrderRef = useRef<string[]>([])
+  const procHoverRef = useRef(false)
 
-  const topActiveProcesses = useMemo(() => {
+  // Anti-jitter state for Top 25 Connections Table
+  const [connRows, setConnRows] = useState<StickyConnRow[]>([])
+  const [tableHoverLocked, setTableHoverLocked] = useState(false)
+  const [pendingNewCount, setPendingNewCount] = useState(0)
+  const tableLockedOrderRef = useRef<string[]>([])
+  const tableHoverRef = useRef(false)
+
+  // Sync Top 5 Active Processes with EMA smoothing + 8s TTL + 15% rank hysteresis
+  useEffect(() => {
+    if (paused) return
+    const now = Date.now()
     const source = live?.top_active ?? []
-    const byProc = new Map<string, { process: string; downBps: number; upBps: number; totalBps: number; conns: number }>()
+
+    const incoming = new Map<string, { downBps: number; upBps: number; totalBps: number; conns: number }>()
     for (const c of source) {
       const key = c.process_display || '未知进程'
-      const cur = byProc.get(key) ?? { process: key, downBps: 0, upBps: 0, totalBps: 0, conns: 0 }
+      const cur = incoming.get(key) ?? { downBps: 0, upBps: 0, totalBps: 0, conns: 0 }
       cur.downBps += c.down_bps
       cur.upBps += c.up_bps
       cur.totalBps += c.down_bps + c.up_bps
       cur.conns += 1
-      byProc.set(key, cur)
+      incoming.set(key, cur)
     }
-    return Array.from(byProc.values())
-      .sort((a, b) => b.totalBps - a.totalBps)
-      .slice(0, 5)
-  }, [live?.top_active])
+
+    setProcRows((prev) => {
+      const merged = new Map<string, StickyProcRow>()
+      const lockedSet = procHoverRef.current ? new Set(procLockedOrderRef.current) : null
+
+      for (const old of prev) {
+        const cur = incoming.get(old.process)
+        if (cur) {
+          merged.set(old.process, {
+            process: old.process,
+            downBps: cur.downBps,
+            upBps: cur.upBps,
+            totalBps: cur.totalBps,
+            emaBps: old.emaBps * (1 - EMA_ALPHA) + cur.totalBps * EMA_ALPHA,
+            conns: cur.conns,
+            lastSeenAt: now,
+            idle: false,
+          })
+        } else if (lockedSet?.has(old.process) || now - old.lastSeenAt < STICKY_TTL_MS) {
+          merged.set(old.process, {
+            ...old,
+            downBps: 0,
+            upBps: 0,
+            totalBps: 0,
+            emaBps: old.emaBps * 0.5,
+            conns: 0,
+            idle: true,
+          })
+        }
+      }
+
+      if (lockedSet && procLockedOrderRef.current.length > 0) {
+        return procLockedOrderRef.current
+          .map((key) => merged.get(key))
+          .filter((r): r is StickyProcRow => Boolean(r))
+      }
+
+      for (const [proc, cur] of incoming.entries()) {
+        if (!merged.has(proc)) {
+          merged.set(proc, {
+            process: proc,
+            downBps: cur.downBps,
+            upBps: cur.upBps,
+            totalBps: cur.totalBps,
+            emaBps: cur.totalBps,
+            conns: cur.conns,
+            lastSeenAt: now,
+            idle: false,
+          })
+        }
+      }
+
+      const prevOrder = prev.map((r) => r.process)
+      return sortWithHysteresis(prevOrder, merged, (r) => r.process).slice(0, 5)
+    })
+  }, [live?.top_active, live?.timestamp, paused])
+
+  // Sync Top 25 Connections Table with aggregation + 8s TTL + hover lock + sort mode
+  useEffect(() => {
+    if (paused) return
+    const now = Date.now()
+    const source = live?.top_active ?? []
+
+    // Merge duplicate live connections sharing the same (device, process, host, egress, route, inbound)
+    const incoming = new Map<string, LiveConnectionItem & { connCount: number }>()
+    for (const c of source) {
+      const key = connStableKey(c)
+      const prevAgg = incoming.get(key)
+      if (!prevAgg) {
+        incoming.set(key, { ...c, connCount: 1 })
+      } else {
+        prevAgg.down_bps += c.down_bps
+        prevAgg.up_bps += c.up_bps
+        prevAgg.total_bytes += c.total_bytes
+        prevAgg.connCount += 1
+        if (c.service_tag && !prevAgg.service_tag) {
+          prevAgg.service_tag = c.service_tag
+        }
+      }
+    }
+
+    const locked = tableHoverRef.current && tableLockedOrderRef.current.length > 0
+    if (locked) {
+      const lockedSet = new Set(tableLockedOrderRef.current)
+      let waiting = 0
+      for (const key of incoming.keys()) {
+        if (!lockedSet.has(key)) waiting++
+      }
+      setPendingNewCount(waiting)
+    } else {
+      setPendingNewCount(0)
+    }
+
+    setConnRows((prev) => {
+      const merged = new Map<string, StickyConnRow>()
+      const lockedSet = locked ? new Set(tableLockedOrderRef.current) : null
+
+      for (const old of prev) {
+        const cur = incoming.get(old.key)
+        if (cur) {
+          const speed = cur.down_bps + cur.up_bps
+          merged.set(old.key, {
+            ...cur,
+            key: old.key,
+            connCount: cur.connCount,
+            lastSeenAt: now,
+            idle: false,
+            emaBps: old.emaBps * (1 - EMA_ALPHA) + speed * EMA_ALPHA,
+          })
+        } else if (lockedSet?.has(old.key) || now - old.lastSeenAt < STICKY_TTL_MS) {
+          merged.set(old.key, {
+            ...old,
+            down_bps: 0,
+            up_bps: 0,
+            idle: true,
+            emaBps: old.emaBps * 0.5,
+          })
+        }
+      }
+
+      if (locked) {
+        return tableLockedOrderRef.current
+          .map((k) => merged.get(k))
+          .filter((r): r is StickyConnRow => Boolean(r))
+      }
+
+      for (const [key, cur] of incoming.entries()) {
+        if (!merged.has(key)) {
+          const speed = cur.down_bps + cur.up_bps
+          merged.set(key, {
+            ...cur,
+            key,
+            connCount: cur.connCount,
+            lastSeenAt: now,
+            idle: false,
+            emaBps: speed,
+          })
+        }
+      }
+
+      if (sortMode === 'total') {
+        const rows = Array.from(merged.values())
+        rows.sort((a, b) => b.total_bytes - a.total_bytes || a.key.localeCompare(b.key))
+        return rows.slice(0, 25)
+      }
+
+      const prevOrder = prev.map((r) => r.key)
+      return sortWithHysteresis(prevOrder, merged, (r) => r.key).slice(0, 25)
+    })
+  }, [live?.top_active, live?.timestamp, paused, sortMode, tableHoverLocked])
+
+  const handleProcMouseEnter = () => {
+    if (procRows.length === 0) return
+    procLockedOrderRef.current = procRows.map((r) => r.process)
+    procHoverRef.current = true
+    setProcHoverLocked(true)
+  }
+
+  const handleProcMouseLeave = () => {
+    procHoverRef.current = false
+    setProcHoverLocked(false)
+  }
+
+  const handleTableMouseEnter = () => {
+    if (connRows.length === 0) return
+    tableLockedOrderRef.current = connRows.map((r) => r.key)
+    tableHoverRef.current = true
+    setTableHoverLocked(true)
+  }
+
+  const handleTableMouseLeave = () => {
+    tableHoverRef.current = false
+    setPendingNewCount(0)
+    setTableHoverLocked(false)
+  }
+
+  const handleTogglePause = () => {
+    setPaused((prev) => !prev)
+  }
 
   const filteredConnections = useMemo(() => {
-    const rows = paused ? frozenRows : (live?.top_active ?? [])
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((c) =>
+    if (!q) return connRows
+    return connRows.filter((c) =>
       [c.device_name, c.device_id, c.process_display, c.host, c.root_domain, c.service_tag, c.egress_node, c.rule]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q)),
     )
-  }, [paused, frozenRows, live?.top_active, searchQuery])
+  }, [connRows, searchQuery])
 
   const handleCopyHost = async (rowKey: string, host: string) => {
     const ok = await copyToClipboard(host)
@@ -103,6 +370,15 @@ export function LiveMonitorPage({
       setTimeout(() => setCopiedRowKey((prev) => (prev === rowKey ? '' : prev)), 1600)
     }
   }
+
+  const maxProcEma = useMemo(() => {
+    let maxVal = 1
+    for (const r of procRows) {
+      if (r.emaBps > maxVal) maxVal = r.emaBps
+      if (r.totalBps > maxVal) maxVal = r.totalBps
+    }
+    return maxVal
+  }, [procRows])
 
   const chartOption = useMemo<echarts.EChartsCoreOption>(() => {
     const pts = rateHistory.length > 0 ? rateHistory : [{ time: '--:--:--', down: 0, up: 0 }]
@@ -212,7 +488,7 @@ export function LiveMonitorPage({
         <EChartBox option={chartOption} className="h-[240px] w-full" />
       </div>
 
-      {/* Device live cards + Active Process Top 5 (no dead space on single device) */}
+      {/* Device live cards + Active Process Top 5 (hover-locked & damped against jitter) */}
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="grid gap-3 sm:grid-cols-2 lg:col-span-7">
           {(live?.devices ?? []).length === 0 ? (
@@ -302,38 +578,68 @@ export function LiveMonitorPage({
           )}
         </div>
 
-        <div className="cl-card rounded-xl p-4 lg:col-span-5">
+        <div
+          className="cl-card flex min-h-[282px] flex-col rounded-xl p-4 lg:col-span-5"
+          onMouseEnter={handleProcMouseEnter}
+          onMouseLeave={handleProcMouseLeave}
+        >
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
               <h3 className="text-sm font-semibold">当前活跃进程实时速率 Top 5</h3>
+              {procHoverLocked && !paused && (
+                <span
+                  data-testid="proc-hover-lock-badge"
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px]"
+                  style={{
+                    backgroundColor: 'var(--cl-accent-soft)',
+                    color: 'var(--cl-accent-primary)',
+                  }}
+                >
+                  <Lock className="h-2.5 w-2.5" />
+                  悬停已锁定
+                </span>
+              )}
             </div>
-            <span className="font-mono text-[10px] text-[var(--cl-text-muted)]">基于活跃连接聚合</span>
+            <span className="font-mono text-[10px] text-[var(--cl-text-muted)]">阻尼排序 · 防抖驻留</span>
           </div>
-          {topActiveProcesses.length === 0 ? (
-            <div className="py-6 text-center text-xs text-[var(--cl-text-muted)]">当前暂无活跃吞吐进程</div>
+          {procRows.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center py-6 text-center text-xs text-[var(--cl-text-muted)]">
+              当前暂无活跃吞吐进程
+            </div>
           ) : (
             <div className="cl-list-stack space-y-2">
-              {topActiveProcesses.map((p) => {
-                const maxBps = topActiveProcesses[0]?.totalBps || 1
-                const pct = Math.max(4, Math.round((p.totalBps / maxBps) * 100))
+              {procRows.map((p) => {
+                const pct = p.idle ? 0 : Math.max(4, Math.round(((p.emaBps || p.totalBps) / maxProcEma) * 100))
                 return (
                   <button
                     type="button"
                     key={p.process}
                     onClick={() => onOpenApp(p.process)}
-                    className="cl-list-item block w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition hover:border-[var(--cl-border-focus)]"
+                    className={`cl-list-item block w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition-[opacity,border-color] duration-300 hover:border-[var(--cl-border-focus)] ${
+                      p.idle ? 'opacity-50' : ''
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <div className="flex min-w-0 items-center gap-2">
                         <span className="truncate font-semibold">{p.process}</span>
                         <span className="shrink-0 font-mono text-[10px] text-[var(--cl-text-muted)]">
-                          {p.conns} 连接
+                          {p.idle ? '空闲保留' : `${p.conns} 连接`}
                         </span>
                       </div>
                       <div className="flex shrink-0 items-center gap-2 font-mono text-[11px] tabular-nums">
-                        <span style={{ color: chartTheme.liveColors.down }}>↓{formatSpeed(p.downBps)}</span>
-                        <span style={{ color: chartTheme.liveColors.up }}>↑{formatSpeed(p.upBps)}</span>
+                        <span
+                          className="inline-block w-[76px] whitespace-nowrap text-right"
+                          style={{ color: chartTheme.liveColors.down }}
+                        >
+                          ↓{formatSpeed(p.downBps)}
+                        </span>
+                        <span
+                          className="inline-block w-[76px] whitespace-nowrap text-right"
+                          style={{ color: chartTheme.liveColors.up }}
+                        >
+                          ↑{formatSpeed(p.upBps)}
+                        </span>
                       </div>
                     </div>
                     <div
@@ -341,7 +647,7 @@ export function LiveMonitorPage({
                       style={{ backgroundColor: 'var(--cl-border-subtle)' }}
                     >
                       <div
-                        className="cl-progress-fill h-full rounded-full"
+                        className="cl-progress-fill h-full rounded-full transition-[width] duration-300 ease-out"
                         style={{ width: `${pct}%`, backgroundColor: chartTheme.liveColors.down }}
                       />
                     </div>
@@ -353,16 +659,16 @@ export function LiveMonitorPage({
         </div>
       </div>
 
-      {/* Live Top Active Connections */}
+      {/* Live Top Active Connections (Sticky TTL + Hover-to-Freeze + Fixed Scroll Container) */}
       <div className="cl-card overflow-hidden rounded-xl">
         <div
           className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3"
           style={{ borderColor: 'var(--cl-border-subtle)' }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Wifi className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
             <h3 className="text-sm font-semibold">当前活跃高吞吐连接 Top 25</h3>
-            {paused && (
+            {paused ? (
               <span
                 className="rounded px-1.5 py-0.5 font-mono text-[10px]"
                 style={{
@@ -372,10 +678,41 @@ export function LiveMonitorPage({
               >
                 列表已冻结（后台曲线仍持续更新）
               </span>
-            )}
+            ) : tableHoverLocked ? (
+              <span
+                data-testid="table-hover-lock-badge"
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px]"
+                style={{
+                  backgroundColor: 'var(--cl-accent-soft)',
+                  color: 'var(--cl-accent-primary)',
+                }}
+              >
+                <Lock className="h-2.5 w-2.5" />
+                悬停已锁定顺序{pendingNewCount > 0 ? ` · 待合入 +${pendingNewCount}` : ''}
+              </span>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div className="cl-segment" title="切换连接排行排序依据">
+              <button
+                type="button"
+                data-testid="conn-sort-total"
+                onClick={() => setSortMode('total')}
+                className={`cl-segment-item ${sortMode === 'total' ? 'cl-segment-item-active' : ''}`}
+              >
+                按累计
+              </button>
+              <button
+                type="button"
+                data-testid="conn-sort-speed"
+                onClick={() => setSortMode('speed')}
+                className={`cl-segment-item ${sortMode === 'speed' ? 'cl-segment-item-active' : ''}`}
+              >
+                按速率
+              </button>
+            </div>
+
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--cl-text-muted)]" />
               <input
@@ -407,21 +744,26 @@ export function LiveMonitorPage({
             </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        <div
+          data-testid="live-connections-scroll"
+          className="cl-thin-scroll h-[460px] overflow-x-auto overflow-y-auto"
+          onMouseEnter={handleTableMouseEnter}
+          onMouseLeave={handleTableMouseLeave}
+        >
+          <table className="w-full min-w-[840px] table-fixed text-left text-xs">
             <thead
-              className="border-b bg-[var(--cl-bg-sidebar)] text-[var(--cl-text-muted)]"
+              className="sticky top-0 z-10 border-b bg-[var(--cl-bg-sidebar)] text-[var(--cl-text-muted)]"
               style={{ borderColor: 'var(--cl-border-subtle)' }}
             >
               <tr>
-                <th className="px-4 py-2 font-medium">设备</th>
-                <th className="px-4 py-2 font-medium">应用进程</th>
+                <th className="w-[112px] px-4 py-2 font-medium">设备</th>
+                <th className="w-[132px] px-4 py-2 font-medium">应用进程</th>
                 <th className="px-4 py-2 font-medium">域名 / 主机</th>
-                <th className="px-4 py-2 font-medium">出口节点</th>
-                <th className="px-4 py-2 font-medium">入口</th>
-                <th className="w-[104px] px-4 py-2 text-right font-medium">实时下行</th>
-                <th className="w-[104px] px-4 py-2 text-right font-medium">实时上行</th>
-                <th className="w-[100px] px-4 py-2 text-right font-medium">连接累计</th>
+                <th className="w-[136px] px-4 py-2 font-medium">出口节点</th>
+                <th className="w-[94px] px-4 py-2 font-medium">入口</th>
+                <th className="w-[98px] px-4 py-2 text-right font-medium">实时下行</th>
+                <th className="w-[98px] px-4 py-2 text-right font-medium">实时上行</th>
+                <th className="w-[98px] px-4 py-2 text-right font-medium">连接累计</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--cl-border-subtle)]">
@@ -434,30 +776,45 @@ export function LiveMonitorPage({
                   </td>
                 </tr>
               ) : (
-                filteredConnections.map((c, idx) => {
-                  const rowKey = `${c.device_id}-${c.process_display}-${c.host}-${idx}`
+                filteredConnections.map((c) => {
+                  const rowKey = c.key
                   const displayHost = maskHostOrDomain(c.host, privacyMode)
                   return (
                     <tr
                       key={rowKey}
-                      className="hover:bg-[var(--cl-bg-surface-hover)]"
+                      data-testid="live-conn-row"
+                      data-row-key={rowKey}
+                      className={`h-9 transition-opacity duration-300 hover:bg-[var(--cl-bg-surface-hover)] ${
+                        c.idle ? 'opacity-50' : ''
+                      }`}
                     >
-                      <td className="px-4 py-2 text-[var(--cl-text-muted)]">{c.device_name || c.device_id}</td>
-                      <td className="px-4 py-2">
+                      <td className="truncate px-4 py-1.5 text-[var(--cl-text-muted)]">
+                        {c.device_name || c.device_id}
+                      </td>
+                      <td className="truncate px-4 py-1.5">
                         <button
                           type="button"
                           onClick={() => onOpenApp(c.process_display)}
-                          className="cursor-pointer font-semibold hover:underline"
+                          className="cursor-pointer truncate font-semibold hover:underline"
                           style={{ color: 'var(--cl-accent-primary)' }}
                         >
                           {c.process_display}
                         </button>
                       </td>
-                      <td className="max-w-[290px] px-4 py-2 font-mono">
-                        <div className="flex items-center gap-1.5">
+                      <td className="px-4 py-1.5 font-mono">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate" title={maskRuleText(c.rule || '', privacyMode)}>
                             {displayHost}
                           </span>
+                          {c.connCount > 1 && (
+                            <span
+                              className="shrink-0 rounded px-1 py-0.5 font-mono text-[10px] text-[var(--cl-text-muted)]"
+                              style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
+                              title={`当前合并展示 ${c.connCount} 条同目标并发连接`}
+                            >
+                              ×{c.connCount}
+                            </span>
+                          )}
                           {c.service_tag ? (
                             <span
                               className="shrink-0 rounded px-1 py-0.5 font-sans text-[10px] text-[var(--cl-text-muted)]"
@@ -480,9 +837,9 @@ export function LiveMonitorPage({
                           </button>
                         </div>
                       </td>
-                      <td className="px-4 py-2">
+                      <td className="truncate px-4 py-1.5">
                         <span
-                          className="rounded px-1.5 py-0.5 font-mono text-[10px]"
+                          className="inline-block max-w-full truncate rounded px-1.5 py-0.5 font-mono text-[10px] align-middle"
                           style={{
                             backgroundColor: 'var(--cl-bg-surface-hover)',
                             color:
@@ -496,22 +853,22 @@ export function LiveMonitorPage({
                           {c.route_type === 'DIRECT' ? 'DIRECT' : c.egress_node}
                         </span>
                       </td>
-                      <td className="px-4 py-2 font-mono text-[11px] text-[var(--cl-text-muted)]">
+                      <td className="truncate px-4 py-1.5 font-mono text-[11px] text-[var(--cl-text-muted)]">
                         {c.inbound_mode}
                       </td>
                       <td
-                        className="px-4 py-2 text-right font-mono whitespace-nowrap tabular-nums"
+                        className="px-4 py-1.5 text-right font-mono whitespace-nowrap tabular-nums"
                         style={{ color: chartTheme.liveColors.down }}
                       >
                         {formatSpeed(c.down_bps)}
                       </td>
                       <td
-                        className="px-4 py-2 text-right font-mono whitespace-nowrap tabular-nums"
+                        className="px-4 py-1.5 text-right font-mono whitespace-nowrap tabular-nums"
                         style={{ color: chartTheme.liveColors.up }}
                       >
                         {formatSpeed(c.up_bps)}
                       </td>
-                      <td className="px-4 py-2 text-right font-mono whitespace-nowrap font-semibold tabular-nums">
+                      <td className="px-4 py-1.5 text-right font-mono whitespace-nowrap font-semibold tabular-nums">
                         {formatBytes(c.total_bytes)}
                       </td>
                     </tr>
