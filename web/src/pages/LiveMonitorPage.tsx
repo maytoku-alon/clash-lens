@@ -181,23 +181,25 @@ export function LiveMonitorPage({
       for (const old of prev) {
         const cur = incoming.get(old.process)
         if (cur) {
+          const nextEma = old.emaBps * (1 - EMA_ALPHA) + cur.totalBps * EMA_ALPHA
           merged.set(old.process, {
             process: old.process,
             downBps: cur.downBps,
             upBps: cur.upBps,
             totalBps: cur.totalBps,
-            emaBps: old.emaBps * (1 - EMA_ALPHA) + cur.totalBps * EMA_ALPHA,
+            emaBps: nextEma < 64 && cur.totalBps === 0 ? 0 : nextEma,
             conns: cur.conns,
             lastSeenAt: now,
             idle: false,
           })
         } else if (lockedSet?.has(old.process) || now - old.lastSeenAt < STICKY_TTL_MS) {
+          const decayed = old.emaBps * 0.5
           merged.set(old.process, {
             ...old,
             downBps: 0,
             upBps: 0,
             totalBps: 0,
-            emaBps: old.emaBps * 0.5,
+            emaBps: decayed < 64 ? 0 : decayed,
             conns: 0,
             idle: true,
           })
@@ -372,7 +374,7 @@ export function LiveMonitorPage({
   }
 
   const maxProcEma = useMemo(() => {
-    let maxVal = 1
+    let maxVal = 4096
     for (const r of procRows) {
       if (r.emaBps > maxVal) maxVal = r.emaBps
       if (r.totalBps > maxVal) maxVal = r.totalBps
@@ -579,29 +581,31 @@ export function LiveMonitorPage({
         </div>
 
         <div
-          className="cl-card flex min-h-[282px] flex-col rounded-xl p-4 lg:col-span-5"
+          data-testid="live-top-processes-card"
+          className="cl-card flex h-[338px] flex-col overflow-hidden rounded-xl p-4 lg:col-span-5"
           onMouseEnter={handleProcMouseEnter}
           onMouseLeave={handleProcMouseLeave}
         >
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
-              <h3 className="text-sm font-semibold">当前活跃进程实时速率 Top 5</h3>
-              {procHoverLocked && !paused && (
-                <span
-                  data-testid="proc-hover-lock-badge"
-                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px]"
-                  style={{
-                    backgroundColor: 'var(--cl-accent-soft)',
-                    color: 'var(--cl-accent-primary)',
-                  }}
-                >
-                  <Lock className="h-2.5 w-2.5" />
-                  悬停已锁定
-                </span>
-              )}
+          <div className="mb-3 flex h-6 shrink-0 items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <TrendingUp className="h-4 w-4 shrink-0" style={{ color: 'var(--cl-accent-primary)' }} />
+              <h3 className="truncate text-sm font-semibold">当前活跃进程实时速率 Top 5</h3>
+              <span
+                data-testid="proc-hover-lock-badge"
+                aria-hidden={!(procHoverLocked && !paused)}
+                className={`inline-flex h-5 shrink-0 items-center gap-1 rounded px-1.5 font-mono text-[10px] leading-none transition-opacity duration-150 ${
+                  procHoverLocked && !paused ? 'opacity-100' : 'pointer-events-none opacity-0'
+                }`}
+                style={{
+                  backgroundColor: 'var(--cl-accent-soft)',
+                  color: 'var(--cl-accent-primary)',
+                }}
+              >
+                <Lock className="h-2.5 w-2.5" />
+                悬停已锁定
+              </span>
             </div>
-            <span className="font-mono text-[10px] text-[var(--cl-text-muted)]">阻尼排序 · 防抖驻留</span>
+            <span className="shrink-0 font-mono text-[10px] text-[var(--cl-text-muted)]">阻尼排序 · 防抖驻留</span>
           </div>
           {procRows.length === 0 ? (
             <div className="flex flex-1 items-center justify-center py-6 text-center text-xs text-[var(--cl-text-muted)]">
@@ -610,13 +614,18 @@ export function LiveMonitorPage({
           ) : (
             <div className="cl-list-stack space-y-2">
               {procRows.map((p) => {
-                const pct = p.idle ? 0 : Math.max(4, Math.round(((p.emaBps || p.totalBps) / maxProcEma) * 100))
+                const effectiveBps = p.totalBps === 0 && p.emaBps < 128 ? 0 : (p.emaBps || p.totalBps)
+                const pct =
+                  p.idle || effectiveBps <= 0
+                    ? 0
+                    : Math.max(4, Math.min(100, Math.round((effectiveBps / maxProcEma) * 100)))
                 return (
                   <button
                     type="button"
                     key={p.process}
+                    data-testid="live-proc-row"
                     onClick={() => onOpenApp(p.process)}
-                    className={`cl-list-item block w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition-[opacity,border-color] duration-300 hover:border-[var(--cl-border-focus)] ${
+                    className={`cl-list-item flex h-[46px] w-full cursor-pointer flex-col justify-center rounded-lg border px-3 py-1.5 text-left transition-[opacity,background-color] duration-300 hover:bg-[var(--cl-bg-surface-hover)] ${
                       p.idle ? 'opacity-50' : ''
                     }`}
                   >
@@ -660,17 +669,17 @@ export function LiveMonitorPage({
       </div>
 
       {/* Live Top Active Connections (Sticky TTL + Hover-to-Freeze + Fixed Scroll Container) */}
-      <div className="cl-card overflow-hidden rounded-xl">
+      <div data-testid="live-top-conns-card" className="cl-card overflow-hidden rounded-xl">
         <div
-          className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3"
+          className="flex min-h-[48px] flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5"
           style={{ borderColor: 'var(--cl-border-subtle)' }}
         >
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex h-6 flex-wrap items-center gap-2">
             <Wifi className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
             <h3 className="text-sm font-semibold">当前活跃高吞吐连接 Top 25</h3>
             {paused ? (
               <span
-                className="rounded px-1.5 py-0.5 font-mono text-[10px]"
+                className="inline-flex h-5 items-center rounded px-1.5 font-mono text-[10px] leading-none"
                 style={{
                   backgroundColor: 'rgba(245, 158, 11, 0.14)',
                   color: 'var(--cl-status-warning)',
@@ -681,7 +690,7 @@ export function LiveMonitorPage({
             ) : tableHoverLocked ? (
               <span
                 data-testid="table-hover-lock-badge"
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px]"
+                className="inline-flex h-5 items-center gap-1 rounded px-1.5 font-mono text-[10px] leading-none"
                 style={{
                   backgroundColor: 'var(--cl-accent-soft)',
                   color: 'var(--cl-accent-primary)',

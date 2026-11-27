@@ -40,7 +40,10 @@ export function NodesQuotaPage({
   }, [data])
 
   const donutOption = useMemo<echarts.EChartsCoreOption>(() => {
-    const splits = data?.route_split ?? []
+    const routeOrder: Record<string, number> = { PROXY: 0, DIRECT: 1, REJECT: 2 }
+    const splits = [...(data?.route_split ?? [])].sort(
+      (a, b) => (routeOrder[a.route_type] ?? 99) - (routeOrder[b.route_type] ?? 99),
+    )
     const colorMap: Record<string, string> = chartTheme.routeColors
     const labelMap: Record<string, string> = {
       PROXY: '代理 (PROXY)',
@@ -256,12 +259,12 @@ export function NodesQuotaPage({
         </div>
       </div>
 
-      {/* Bottom row: Proxy Audit + Rules & Nodes table */}
+      {/* Bottom row: Proxy Audit + Rules & Nodes table (unified fixed heights prevent cross-device layout shift) */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Proxy Audit */}
-        <div className="cl-card overflow-hidden rounded-xl">
+        <div data-testid="proxy-audit-card" className="cl-card flex flex-col overflow-hidden rounded-xl">
           <div
-            className="flex items-center justify-between border-b px-4 py-3"
+            className="flex shrink-0 items-center justify-between border-b px-4 py-3"
             style={{ borderColor: 'var(--cl-border-subtle)' }}
           >
             <div className="flex items-center gap-2">
@@ -270,21 +273,23 @@ export function NodesQuotaPage({
             </div>
             <span className="text-[11px] text-[var(--cl-text-muted)]">代理消耗最高的流向条目</span>
           </div>
-          <div className="divide-y divide-[var(--cl-border-subtle)]">
+          <div className="cl-thin-scroll h-[460px] divide-y divide-[var(--cl-border-subtle)] overflow-y-auto">
             {!data || data.proxy_audit.length === 0 ? (
-              <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">当前范围无代理流量记录</div>
+              <div className="flex h-full items-center justify-center text-xs text-[var(--cl-text-muted)]">
+                当前范围无代理流量记录
+              </div>
             ) : (
               data.proxy_audit.map((item, idx) => (
                 <button
                   type="button"
                   key={`${item.process_display}-${item.root_domain}-${item.egress_node}-${idx}`}
                   onClick={() => onOpenApp(item.process_display)}
-                  className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-[var(--cl-bg-surface-hover)]"
+                  className="flex min-h-[58px] w-full cursor-pointer items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-[var(--cl-bg-surface-hover)]"
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="font-semibold">{item.process_display}</span>
-                      <ArrowRight className="h-3 w-3 text-[var(--cl-text-muted)]" />
+                    <div className="flex h-5 items-center gap-1.5 text-xs">
+                      <span className="shrink-0 font-semibold">{item.process_display}</span>
+                      <ArrowRight className="h-3 w-3 shrink-0 text-[var(--cl-text-muted)]" />
                       <span
                         className="truncate font-mono"
                         style={{ color: 'var(--cl-accent-primary)' }}
@@ -293,7 +298,7 @@ export function NodesQuotaPage({
                       </span>
                       {item.service_tag && (
                         <span
-                          className="rounded px-1.5 py-0.5 text-[10px] text-[var(--cl-text-muted)]"
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none text-[var(--cl-text-muted)]"
                           style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
                         >
                           {item.service_tag}
@@ -301,7 +306,7 @@ export function NodesQuotaPage({
                       )}
                       {isMatchFallbackRule(item.rule) && (
                         <span
-                          className="rounded px-1.5 py-0.5 font-mono text-[10px]"
+                          className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] leading-none"
                           style={{
                             backgroundColor: 'rgba(245, 158, 11, 0.14)',
                             color: 'var(--cl-status-warning)',
@@ -336,9 +341,9 @@ export function NodesQuotaPage({
         </div>
 
         {/* Rules distribution */}
-        <div className="cl-card overflow-hidden rounded-xl">
+        <div data-testid="rules-rank-card" className="cl-card flex flex-col overflow-hidden rounded-xl">
           <div
-            className="flex items-center justify-between border-b px-4 py-3"
+            className="flex shrink-0 items-center justify-between border-b px-4 py-3"
             style={{ borderColor: 'var(--cl-border-subtle)' }}
           >
             <div className="flex items-center gap-2">
@@ -347,10 +352,10 @@ export function NodesQuotaPage({
             </div>
             <Network className="h-4 w-4 text-[var(--cl-text-muted)]" />
           </div>
-          <div className="overflow-x-auto">
+          <div className="cl-thin-scroll h-[460px] overflow-x-auto overflow-y-auto">
             <table className="w-full text-left text-xs">
               <thead
-                className="border-b bg-[var(--cl-bg-sidebar)] text-[var(--cl-text-muted)]"
+                className="sticky top-0 z-10 border-b bg-[var(--cl-bg-sidebar)] text-[var(--cl-text-muted)]"
                 style={{ borderColor: 'var(--cl-border-subtle)' }}
               >
                 <tr>
