@@ -6,151 +6,11 @@ import (
 	"strings"
 
 	"clash-lens/agent/internal/mihomo"
+	"clash-lens/pkg/catalog"
 	"clash-lens/pkg/privacy"
 	"clash-lens/pkg/protocol"
 	"golang.org/x/net/publicsuffix"
 )
-
-var knownProcessAliases = map[string]string{
-	"chrome":                 "Chrome",
-	"google chrome":          "Chrome",
-	"com.android.chrome":     "Chrome",
-	"msedge":                 "Edge",
-	"microsoftedge":          "Edge",
-	"firefox":                "Firefox",
-	"firefox.exe":            "Firefox",
-	"brave":                  "Brave",
-	"arc":                    "Arc",
-	"opera":                  "Opera",
-	"code":                   "VS Code",
-	"cursor":                 "Cursor",
-	"antigravity":            "Antigravity",
-	"windsurf":               "Windsurf",
-	"idea64":                 "IntelliJ IDEA",
-	"pycharm64":              "PyCharm",
-	"goland64":               "GoLand",
-	"datagrip64":             "DataGrip",
-	"steam":                  "Steam",
-	"steamwebhelper":         "Steam",
-	"epicgameslauncher":      "Epic Games",
-	"wechat":                 "微信",
-	"weixin":                 "微信",
-	"com.tencent.mm":         "微信",
-	"qq":                     "QQ",
-	"com.tencent.mobileqq":   "QQ",
-	"telegram":               "Telegram",
-	"org.telegram.messenger": "Telegram",
-	"discord":                "Discord",
-	"slack":                  "Slack",
-	"clash-verge":            "Clash Verge",
-	"verge-mihomo":           "Clash 内核",
-	"mihomo":                 "Clash 内核",
-	"clash-meta":             "Clash 内核",
-	"curl":                   "curl",
-	"wget":                   "wget",
-	"git":                    "Git",
-	"git-remote-https":       "Git",
-	"node":                   "Node.js",
-	"python":                 "Python",
-	"python3":                "Python",
-	"go":                     "Go",
-	"docker":                 "Docker",
-	"com.docker.backend":     "Docker",
-	"dockerd":                "Docker",
-	"spotify":                "Spotify",
-	"obs64":                  "OBS Studio",
-	"svchost":                "Windows 系统服务",
-	"system":                 "Windows 系统内核",
-	"onedrive":               "OneDrive",
-	"dropbox":                "Dropbox",
-	"bilibili":               "B站客户端",
-	"tv.danmaku.bili":        "B站",
-	"com.ss.android.ugc.aweme": "抖音",
-}
-
-var exactHostServices = map[string]string{
-	"update.googleapis.com":       "Chrome / Google 更新",
-	"edgedl.me.gvt1.com":          "Chrome 组件更新",
-	"redirector.gvt1.com":         "Chrome / Google 下载",
-	"dl.google.com":               "Google 下载",
-	"clients2.google.com":         "Chrome 扩展同步",
-	"safebrowsing.googleapis.com": "Chrome 安全浏览",
-	"raw.githubusercontent.com":   "GitHub Raw",
-	"objects.githubusercontent.com": "GitHub Releases",
-	"api.openai.com":              "OpenAI API",
-	"chatgpt.com":                 "ChatGPT",
-	"api.anthropic.com":           "Claude API",
-	"claude.ai":                   "Claude",
-	"generativelanguage.googleapis.com": "Gemini API",
-	"registry.npmjs.org":          "npm 镜像",
-	"registry.npmmirror.com":      "npmmirror",
-	"goproxy.cn":                  "Go Proxy",
-	"proxy.golang.org":            "Go Proxy",
-}
-
-var rootDomainServices = map[string]string{
-	"googlevideo.com":       "YouTube 视频流",
-	"youtube.com":           "YouTube",
-	"youtu.be":              "YouTube",
-	"ytimg.com":             "YouTube 静态资源",
-	"gvt1.com":              "Google CDN / 更新",
-	"gvt2.com":              "Google CDN",
-	"googleapis.com":        "Google API",
-	"google.com":            "Google",
-	"gstatic.com":           "Google 静态资源",
-	"googleusercontent.com": "Google 用户内容",
-	"github.com":            "GitHub",
-	"githubusercontent.com": "GitHub 内容分发",
-	"githubassets.com":      "GitHub 静态资源",
-	"bilibili.com":          "B站",
-	"bilivideo.com":         "B站视频流",
-	"bilivideo.cn":          "B站视频流",
-	"hdslb.com":             "B站静态资源",
-	"biliapi.net":           "B站 API",
-	"steampowered.com":      "Steam",
-	"steamcontent.com":      "Steam 游戏下载",
-	"steamstatic.com":       "Steam 静态资源",
-	"steamcommunity.com":    "Steam 社区",
-	"openai.com":            "OpenAI",
-	"chatgpt.com":           "ChatGPT",
-	"oaiusercontent.com":    "ChatGPT 资源",
-	"anthropic.com":         "Anthropic / Claude",
-	"claude.ai":             "Claude",
-	"microsoft.com":         "Microsoft",
-	"windowsupdate.com":     "Windows 更新",
-	"live.com":              "Microsoft Live",
-	"msedge.net":            "Edge 服务",
-	"apple.com":             "Apple",
-	"icloud.com":            "iCloud",
-	"mzstatic.com":          "Apple CDN",
-	"cloudflare.com":        "Cloudflare",
-	"twitch.tv":             "Twitch",
-	"ttvnw.net":             "Twitch 视频流",
-	"netflix.com":           "Netflix",
-	"nflxvideo.net":         "Netflix 视频流",
-	"discord.com":           "Discord",
-	"discordapp.com":        "Discord 资源",
-	"discordapp.net":        "Discord 媒体",
-	"telegram.org":          "Telegram",
-	"t.me":                  "Telegram",
-	"docker.io":             "Docker Hub",
-	"docker.com":            "Docker",
-	"npmjs.org":             "npm",
-	"pypi.org":              "PyPI",
-	"pythonhosted.org":      "PyPI 文件",
-	"qq.com":                "腾讯",
-	"weixin.qq.com":         "微信",
-	"weixinbridge.com":      "微信",
-	"byteoversea.com":       "ByteDance 海外",
-	"tiktokv.com":           "TikTok",
-	"x.com":                 "X (Twitter)",
-	"twitter.com":           "X (Twitter)",
-	"twimg.com":             "X 媒体资源",
-	"reddit.com":            "Reddit",
-	"redd.it":               "Reddit 媒体",
-	"spotify.com":           "Spotify",
-	"scdn.co":               "Spotify CDN",
-}
 
 // NormalizedConn holds normalized dimensions extracted from a Mihomo connection.
 type NormalizedConn struct {
@@ -215,15 +75,18 @@ func NormalizeProcess(proc, procPath string) (rawName, display string) {
 		p = filepath.Base(strings.TrimSpace(procPath))
 	}
 	if p == "" {
+		if label, ok := catalog.LookupProcess("unknown", "zh"); ok {
+			return "unknown", label
+		}
 		return "unknown", "未知进程"
 	}
 	rawName = p
 	key := strings.ToLower(p)
 	keyNoExe := strings.TrimSuffix(key, ".exe")
-	if alias, ok := knownProcessAliases[key]; ok {
+	if alias, ok := catalog.LookupProcess(key, "zh"); ok {
 		return rawName, alias
 	}
-	if alias, ok := knownProcessAliases[keyNoExe]; ok {
+	if alias, ok := catalog.LookupProcess(keyNoExe, "zh"); ok {
 		return rawName, alias
 	}
 	cleaned := strings.TrimSuffix(p, ".exe")
@@ -272,13 +135,7 @@ func NormalizeHostAndRoot(host, sniffHost, destIP string) (normHost, rootDomain 
 
 // LookupServiceTag returns a built-in friendly service label for well-known hosts/domains.
 func LookupServiceTag(host, rootDomain string) string {
-	if tag, ok := exactHostServices[strings.ToLower(host)]; ok {
-		return tag
-	}
-	if tag, ok := rootDomainServices[strings.ToLower(rootDomain)]; ok {
-		return tag
-	}
-	return ""
+	return catalog.LookupService(host, rootDomain, "zh")
 }
 
 // ClassifyChains resolves Mihomo chains into egress node, top proxy group, and route type.

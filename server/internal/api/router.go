@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"clash-lens/pkg/catalog"
 	"clash-lens/pkg/privacy"
 	"clash-lens/pkg/protocol"
 	"clash-lens/server/internal/auth"
@@ -78,6 +79,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("GET /api/v1/settings", s.requireAdmin(http.HandlerFunc(s.handleGetSettings)))
 	mux.Handle("PUT /api/v1/settings", s.requireAdmin(http.HandlerFunc(s.handlePutSettings)))
+	mux.Handle("GET /api/v1/catalog", s.requireAdmin(http.HandlerFunc(s.handleCatalog)))
 	mux.Handle("GET /api/v1/backup/export", s.requireAdmin(http.HandlerFunc(s.handleBackupExport)))
 	mux.Handle("POST /api/v1/backup/import", s.requireAdmin(http.HandlerFunc(s.handleBackupImport)))
 	mux.Handle("GET /api/v1/storage/stats", s.requireAdmin(http.HandlerFunc(s.handleStorageStats)))
@@ -634,6 +636,13 @@ func (s *Server) handleStorageCompact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(catalog.RawJSON())
 }
 
 func (s *Server) handleLiveWS(w http.ResponseWriter, r *http.Request) {

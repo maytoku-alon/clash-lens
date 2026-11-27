@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"clash-lens/pkg/catalog"
 	"clash-lens/pkg/protocol"
 )
 
@@ -270,6 +271,9 @@ func resolveServiceTag(rootDomain, existingTag string, aliases []protocol.Domain
 		if strings.ToLower(strings.TrimSpace(a.Domain)) == lower && a.Label != "" {
 			return a.Label
 		}
+	}
+	if builtIn := catalog.LookupService("", lower, "zh"); builtIn != "" {
+		return builtIn
 	}
 	return existingTag
 }
