@@ -18,12 +18,14 @@ import (
 )
 
 const (
-	settingAdminHash      = "admin_password_hash"
-	settingSessionSecret  = "session_secret"
-	settingUserSettings   = "user_settings"
-	defaultBurstMB        = 200
-	defaultMonthlyQuotaGB = 0
-	defaultResetDay       = 1
+	settingAdminHash           = "admin_password_hash"
+	settingSessionSecret       = "session_secret"
+	settingUserSettings        = "user_settings"
+	defaultBurstMB             = 200
+	defaultMonthlyQuotaGB      = 0
+	defaultResetDay            = 1
+	defaultMinuteRetentionDays = 7
+	defaultHourlyRetentionDays = 30
 )
 
 // Store wraps SQLite persistence, ingestion, retention maintenance, and analytics queries.
@@ -140,14 +142,40 @@ func (s *Store) GetOrCreateSessionSecret(ctx context.Context, fallbackGenerator 
 	return secret, nil
 }
 
+// normalizeRetentionDays clamps minute [1..30] and hourly [max(7, minute)..365] retention windows.
+func normalizeRetentionDays(minDays, hourDays int) (int, int) {
+	if minDays <= 0 {
+		minDays = defaultMinuteRetentionDays
+	} else if minDays < 1 {
+		minDays = 1
+	} else if minDays > 30 {
+		minDays = 30
+	}
+	minAllowedHourly := 7
+	if minDays > minAllowedHourly {
+		minAllowedHourly = minDays
+	}
+	if hourDays <= 0 {
+		hourDays = defaultHourlyRetentionDays
+	}
+	if hourDays < minAllowedHourly {
+		hourDays = minAllowedHourly
+	} else if hourDays > 365 {
+		hourDays = 365
+	}
+	return minDays, hourDays
+}
+
 // DefaultSettings returns initial user settings.
 func DefaultSettings() protocol.SettingsPayload {
 	return protocol.SettingsPayload{
-		MonthlyQuotaGB:   defaultMonthlyQuotaGB,
-		ResetDay:         defaultResetDay,
-		BurstThresholdMB: defaultBurstMB,
-		NodeMultipliers:  []protocol.NodeMultiplierRule{},
-		DomainAliases:    []protocol.DomainAliasRule{},
+		MonthlyQuotaGB:      defaultMonthlyQuotaGB,
+		ResetDay:            defaultResetDay,
+		BurstThresholdMB:    defaultBurstMB,
+		MinuteRetentionDays: defaultMinuteRetentionDays,
+		HourlyRetentionDays: defaultHourlyRetentionDays,
+		NodeMultipliers:     []protocol.NodeMultiplierRule{},
+		DomainAliases:       []protocol.DomainAliasRule{},
 	}
 }
 
@@ -168,6 +196,7 @@ func (s *Store) GetSettings(ctx context.Context) (protocol.SettingsPayload, erro
 	if cfg.BurstThresholdMB <= 0 {
 		cfg.BurstThresholdMB = defaultBurstMB
 	}
+	cfg.MinuteRetentionDays, cfg.HourlyRetentionDays = normalizeRetentionDays(cfg.MinuteRetentionDays, cfg.HourlyRetentionDays)
 	if cfg.NodeMultipliers == nil {
 		cfg.NodeMultipliers = []protocol.NodeMultiplierRule{}
 	}
@@ -188,6 +217,7 @@ func (s *Store) SaveSettings(ctx context.Context, cfg protocol.SettingsPayload) 
 	if cfg.BurstThresholdMB <= 0 {
 		cfg.BurstThresholdMB = defaultBurstMB
 	}
+	cfg.MinuteRetentionDays, cfg.HourlyRetentionDays = normalizeRetentionDays(cfg.MinuteRetentionDays, cfg.HourlyRetentionDays)
 	cleanMult := make([]protocol.NodeMultiplierRule, 0, len(cfg.NodeMultipliers))
 	for _, r := range cfg.NodeMultipliers {
 		p := strings.TrimSpace(r.Pattern)
@@ -224,8 +254,15 @@ func (s *Store) SaveSettings(ctx context.Context, cfg protocol.SettingsPayload) 
 	return cfg, nil
 }
 
-// RunMaintenanceLoop runs hourly retention pruning and long-tail host folding until ctx cancels.
-func (s *Store) RunMaintenanceLoop(ctx context.Context) {
+// RunMaintenanceLoop runs startup compaction + hourly tiered archival and long-tail host folding until ctx cancels.
+func (s *Store) RunMaintenanceLoop(ctx context.Context, tzOffsetMinutes int) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(15 * time.Second):
+		_ = s.MaintainWithTZ(ctx, time.Now().Unix(), tzOffsetMinutes)
+	}
+
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -233,74 +270,20 @@ func (s *Store) RunMaintenanceLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			_ = s.Maintain(ctx, now.Unix())
+			_ = s.MaintainWithTZ(ctx, now.Unix(), tzOffsetMinutes)
 		}
 	}
 }
 
-// Maintain prunes old minute/batch rows and folds low-volume hourly subdomains into '*'.
+// Maintain prunes old minute/batch rows and runs tiered archival in UTC.
 func (s *Store) Maintain(ctx context.Context, now int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.MaintainWithTZ(ctx, now, 0)
+}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	cutoffMinuteFlows := now - 14*86400
-	cutoffMinuteTotals := now - 90*86400
-	cutoffBatches := now - 30*86400
-	cutoffFold := now - 2*3600
-
-	if _, err = tx.ExecContext(ctx, `DELETE FROM traffic_minute_flows WHERE bucket_ts < ?`, cutoffMinuteFlows); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM traffic_minute_totals WHERE bucket_ts < ?`, cutoffMinuteTotals); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM ingest_batches WHERE received_at < ?`, cutoffBatches); err != nil {
-		return err
-	}
-
-	// Fold long-tail hosts (< 100 KB) older than 2 hours into host = '*' within the same hourly key.
-	const foldThreshold int64 = 102400
-	if _, err = tx.ExecContext(ctx, `
-		INSERT INTO traffic_hourly_flows (
-			device_id, hour_ts, process_name, process_display, root_domain, service_tag,
-			host, egress_node, proxy_group, route_type, inbound_mode, rule,
-			up_bytes, down_bytes, conn_count
-		)
-		SELECT
-			device_id, hour_ts, process_name, MAX(process_display), root_domain, MAX(service_tag),
-			'*', egress_node, MAX(proxy_group), route_type, inbound_mode, MAX(rule),
-			SUM(up_bytes), SUM(down_bytes), SUM(conn_count)
-		FROM traffic_hourly_flows
-		WHERE hour_ts < ? AND host != '*' AND (up_bytes + down_bytes) < ?
-		GROUP BY device_id, hour_ts, process_name, root_domain, egress_node, route_type, inbound_mode
-		ON CONFLICT(device_id, hour_ts, process_name, root_domain, host, egress_node, route_type, inbound_mode)
-		DO UPDATE SET
-			up_bytes = traffic_hourly_flows.up_bytes + excluded.up_bytes,
-			down_bytes = traffic_hourly_flows.down_bytes + excluded.down_bytes,
-			conn_count = traffic_hourly_flows.conn_count + excluded.conn_count,
-			service_tag = CASE WHEN excluded.service_tag != '' THEN excluded.service_tag ELSE traffic_hourly_flows.service_tag END
-	`, cutoffFold, foldThreshold); err != nil {
-		return err
-	}
-
-	if _, err = tx.ExecContext(ctx, `
-		DELETE FROM traffic_hourly_flows
-		WHERE hour_ts < ? AND host != '*' AND (up_bytes + down_bytes) < ?
-	`, cutoffFold, foldThreshold); err != nil {
-		return err
-	}
-
-	err = tx.Commit()
+// MaintainWithTZ runs configured tiered retention pruning, hourly->daily archival, and long-tail host folding.
+func (s *Store) MaintainWithTZ(ctx context.Context, now int64, tzOffsetMinutes int) error {
+	cfg, _ := s.GetSettings(ctx)
+	_, err := s.compactInternal(ctx, cfg.MinuteRetentionDays, cfg.HourlyRetentionDays, false, tzOffsetMinutes, now, true)
 	return err
 }
 

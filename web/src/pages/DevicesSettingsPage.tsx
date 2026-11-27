@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import {
   AlertTriangle,
+  Archive,
   Check,
   ChevronDown,
   ChevronRight,
@@ -23,7 +24,13 @@ import {
 import { authApi } from '../api/authApi'
 import { deviceApi } from '../api/deviceApi'
 import { useTheme } from '../theme/ThemeProvider'
-import type { DeviceInfo, SettingsPayload, StoragePruneResponse, StorageStatsResponse } from '../types/api'
+import type {
+  DeviceInfo,
+  SettingsPayload,
+  StorageCompactResponse,
+  StoragePruneResponse,
+  StorageStatsResponse,
+} from '../types/api'
 import { formatBytes, formatFullTime, formatRelativeTime } from '../utils/format'
 
 interface DevicesSettingsPageProps {
@@ -63,6 +70,8 @@ export function DevicesSettingsPage({
     monthly_quota_gb: 0,
     reset_day: 1,
     burst_threshold_mb: 200,
+    minute_retention_days: 7,
+    hourly_retention_days: 30,
     node_multipliers: [],
     domain_aliases: [],
   })
@@ -80,11 +89,18 @@ export function DevicesSettingsPage({
   const [importingBackup, setImportingBackup] = useState(false)
   const [backupNotice, setBackupNotice] = useState<{ ok: boolean; text: string } | null>(null)
 
-  // Storage stats & prune state
+  // Storage stats, tiered compaction & prune state
   const [storageStats, setStorageStats] = useState<StorageStatsResponse | null>(null)
   const [storageLoading, setStorageLoading] = useState(false)
   const [retainDays, setRetainDays] = useState(30)
   const [pruneVacuum, setPruneVacuum] = useState(true)
+  const [preserveSummary, setPreserveSummary] = useState(true)
+  const [compacting, setCompacting] = useState(false)
+  const [compactNotice, setCompactNotice] = useState<{
+    ok: boolean
+    text: string
+    detail?: StorageCompactResponse
+  } | null>(null)
   const [confirmPruneOpen, setConfirmPruneOpen] = useState(false)
   const [pruning, setPruning] = useState(false)
   const [pruneNotice, setPruneNotice] = useState<{ ok: boolean; text: string; detail?: StoragePruneResponse } | null>(null)
@@ -250,12 +266,44 @@ export function DevicesSettingsPage({
     }
   }
 
+  const handleCompactStorage = async () => {
+    setCompacting(true)
+    setCompactNotice(null)
+    try {
+      const minDays = settings.minute_retention_days ?? 7
+      const hourDays = settings.hourly_retention_days ?? 30
+      const res = await deviceApi.compactStorage({
+        minute_retain_days: minDays,
+        hourly_retain_days: hourDays,
+        vacuum: pruneVacuum,
+      })
+      setCompactNotice({
+        ok: true,
+        text: `无损归档完成：已清理 ${res.pruned_minute_rows} 条过期分钟明细，将 ${res.archived_hourly_rows} 条小时明细按天归档（生成 ${res.daily_flows_upserted} 条冷层日记录），占用 ${formatBytes(res.before_bytes)} → ${formatBytes(res.after_bytes)}。`,
+        detail: res,
+      })
+      onDevicesChanged()
+      void loadStorageStats()
+    } catch (err) {
+      setCompactNotice({
+        ok: false,
+        text: err instanceof Error ? err.message : '归档失败',
+      })
+    } finally {
+      setCompacting(false)
+    }
+  }
+
   const handleConfirmPrune = async () => {
     const safeDays = Math.max(7, Math.floor(retainDays || 30))
     setPruning(true)
     setPruneNotice(null)
     try {
-      const res = await deviceApi.pruneStorage({ retain_days: safeDays, vacuum: pruneVacuum })
+      const res = await deviceApi.pruneStorage({
+        retain_days: safeDays,
+        vacuum: pruneVacuum,
+        preserve_summary: preserveSummary,
+      })
       setPruneNotice({
         ok: true,
         text: `已清理 ${res.total_deleted_rows} 条过期记录（空间 ${formatBytes(res.before_bytes)} → ${formatBytes(res.after_bytes)}）。`,
@@ -719,6 +767,42 @@ export function DevicesSettingsPage({
               </div>
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">分钟明细热层保留 (天)</label>
+                <select
+                  value={settings.minute_retention_days ?? 7}
+                  onChange={(e) => {
+                    const m = Number(e.target.value) || 7
+                    const h = Math.max(m, settings.hourly_retention_days ?? 30)
+                    setSettings({ ...settings, minute_retention_days: m, hourly_retention_days: h })
+                  }}
+                  className="cl-input w-full font-mono"
+                >
+                  <option value={3}>3 天（极简占用）</option>
+                  <option value={7}>7 天（默认推荐）</option>
+                  <option value={14}>14 天</option>
+                  <option value={30}>30 天</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">小时明细温层保留（超期自动按天归档）</label>
+                <select
+                  value={settings.hourly_retention_days ?? 30}
+                  onChange={(e) =>
+                    setSettings({ ...settings, hourly_retention_days: Number(e.target.value) || 30 })
+                  }
+                  className="cl-input w-full font-mono"
+                >
+                  <option value={14}>14 天</option>
+                  <option value={30}>30 天（默认推荐）</option>
+                  <option value={60}>60 天</option>
+                  <option value={90}>90 天</option>
+                  <option value={180}>180 天</option>
+                </select>
+              </div>
+            </div>
+
             {/* Multipliers */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
@@ -934,12 +1018,12 @@ export function DevicesSettingsPage({
               </button>
             </div>
 
-            {/* Storage Stats & Prune Card */}
+            {/* Storage Stats, Lossless Archival & Prune Card */}
             <div className="cl-card space-y-3 rounded-xl p-4 sm:p-5">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <HardDrive className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
-                  <h2 className="text-sm font-semibold">数据库存储统计与清理</h2>
+                  <h2 className="text-sm font-semibold">数据库冷热分级存储与维护</h2>
                 </div>
                 <button
                   type="button"
@@ -969,12 +1053,12 @@ export function DevicesSettingsPage({
                     className="rounded-lg border p-2.5"
                     style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
                   >
-                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">明细 / 小时记录</div>
+                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">分级记录数</div>
                     <div className="mt-1 text-sm font-bold tabular-nums">
-                      {storageStats.minute_flows_rows + storageStats.hourly_flows_rows} 行
+                      {storageStats.minute_flows_rows + storageStats.hourly_flows_rows + storageStats.daily_flows_rows} 行
                     </div>
                     <div className="mt-0.5 text-[10px] text-[var(--cl-text-muted)] tabular-nums">
-                      分钟 {storageStats.minute_flows_rows} · 小时 {storageStats.hourly_flows_rows}
+                      分钟 {storageStats.minute_flows_rows} · 小时 {storageStats.hourly_flows_rows} · 日归档 {storageStats.daily_flows_rows}
                     </div>
                   </div>
                   <div
@@ -994,7 +1078,37 @@ export function DevicesSettingsPage({
                 <div className="text-xs text-[var(--cl-text-muted)]">正在获取存储占用...</div>
               )}
 
-              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5"
+                style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
+              >
+                <div className="min-w-0 flex-1 text-[11px] text-[var(--cl-text-muted)]">
+                  将超过 <span className="font-mono font-semibold text-[var(--cl-text-primary)]">{settings.minute_retention_days ?? 7}</span> 天的分钟明细与超过{' '}
+                  <span className="font-mono font-semibold text-[var(--cl-text-primary)]">{settings.hourly_retention_days ?? 30}</span> 天的小时明细无损合并为按天归档（保留 365 天热力图与应用/域名/节点排行）。
+                </div>
+                <button
+                  type="button"
+                  data-testid="compact-storage-btn"
+                  onClick={() => void handleCompactStorage()}
+                  disabled={compacting}
+                  className="cl-btn-accent !h-7 shrink-0"
+                >
+                  <Archive className="h-3 w-3" />
+                  {compacting ? '归档压缩中...' : '立即无损归档压缩'}
+                </button>
+              </div>
+
+              {compactNotice && (
+                <div
+                  data-testid="compact-storage-notice"
+                  className="text-xs"
+                  style={{ color: compactNotice.ok ? 'var(--cl-status-success)' : 'var(--cl-status-danger)' }}
+                >
+                  {compactNotice.text}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2.5 border-t pt-2.5" style={{ borderColor: 'var(--cl-border-subtle)' }}>
                 <label className="flex items-center gap-1.5 text-xs text-[var(--cl-text-muted)]">
                   <span>仅保留最近</span>
                   <select
@@ -1014,12 +1128,23 @@ export function DevicesSettingsPage({
                 <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--cl-text-muted)]">
                   <input
                     type="checkbox"
+                    checked={preserveSummary}
+                    onChange={(e) => setPreserveSummary(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded"
+                    style={{ accentColor: 'var(--cl-accent-primary)' }}
+                  />
+                  <span>保留 365 天热力图与按天汇总</span>
+                </label>
+
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--cl-text-muted)]">
+                  <input
+                    type="checkbox"
                     checked={pruneVacuum}
                     onChange={(e) => setPruneVacuum(e.target.checked)}
                     className="h-3.5 w-3.5 rounded"
                     style={{ accentColor: 'var(--cl-accent-primary)' }}
                   />
-                  <span>清理后执行 VACUUM 回收磁盘空间</span>
+                  <span>VACUUM 收缩磁盘</span>
                 </label>
 
                 <button
@@ -1094,8 +1219,9 @@ export function DevicesSettingsPage({
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold">确认清理过期历史流量数据？</h3>
                 <p className="text-xs leading-relaxed text-[var(--cl-text-muted)]">
-                  即将永久删除 <span className="font-mono font-semibold text-[var(--cl-text-primary)]">{retainDays}</span> 天前的分钟级、小时级与每日汇总历史记录
-                  {pruneVacuum ? '，并执行 WAL 截断与 VACUUM 空间压缩' : '，并执行 WAL 截断'}。建议清理前先导出 `.json.gz` 备份。
+                  即将永久删除 <span className="font-mono font-semibold text-[var(--cl-text-primary)]">{retainDays}</span> 天前的分钟级与小时级明细记录
+                  {preserveSummary ? '（保留 365 天热力图与按天归档汇总）' : '，并一并清除每日汇总与按天归档记录'}
+                  {pruneVacuum ? '，清理后执行 WAL 截断与 VACUUM 空间压缩' : '，并执行 WAL 截断'}。建议操作前先导出 `.json.gz` 备份。
                 </p>
               </div>
             </div>

@@ -34,6 +34,7 @@ func (s *Store) ExportBackup(ctx context.Context, appVersion string) (protocol.B
 		MinuteTotals:  []protocol.BackupMinuteTotalRow{},
 		MinuteFlows:   []protocol.BackupFlowRow{},
 		HourlyFlows:   []protocol.BackupFlowRow{},
+		DailyFlows:    []protocol.BackupDailyFlowRow{},
 		DailySummary:  []protocol.BackupDailySummaryRow{},
 	}
 
@@ -149,6 +150,35 @@ func (s *Store) ExportBackup(ctx context.Context, appVersion string) (protocol.B
 		return archive, err
 	}
 	_ = hrFlowRows.Close()
+
+	dayFlowRows, err := s.db.QueryContext(ctx, `
+		SELECT device_id, day_date, process_name, process_display, root_domain, service_tag,
+		       egress_node, proxy_group, route_type, rule,
+		       up_bytes, down_bytes, tun_bytes, conn_count
+		FROM traffic_daily_flows
+		ORDER BY day_date ASC, device_id ASC
+	`)
+	if err != nil {
+		return archive, err
+	}
+	for dayFlowRows.Next() {
+		var df protocol.BackupDailyFlowRow
+		if err := dayFlowRows.Scan(
+			&df.DeviceID, &df.DayDate, &df.ProcessName, &df.ProcessDisplay, &df.RootDomain, &df.ServiceTag,
+			&df.EgressNode, &df.ProxyGroup, &df.RouteType, &df.Rule,
+			&df.UpBytes, &df.DownBytes, &df.TunBytes, &df.ConnCount,
+		); err != nil {
+			_ = dayFlowRows.Close()
+			return archive, err
+		}
+		df.Rule = privacy.SanitizeRule(df.Rule, privacy.ModeMask)
+		archive.DailyFlows = append(archive.DailyFlows, df)
+	}
+	if err := dayFlowRows.Err(); err != nil {
+		_ = dayFlowRows.Close()
+		return archive, err
+	}
+	_ = dayFlowRows.Close()
 
 	dayRows, err := s.db.QueryContext(ctx, `
 		SELECT device_id, day_date, proxy_up, proxy_down, direct_up, direct_down, reject_bytes, conn_count
@@ -430,6 +460,66 @@ func (s *Store) ImportBackup(ctx context.Context, archive protocol.BackupArchive
 				return protocol.BackupImportResult{}, err
 			}
 			res.HourlyFlowsRows++
+		}
+		_ = stmt.Close()
+	}
+
+	if len(archive.DailyFlows) > 0 {
+		stmt, prepErr := tx.PrepareContext(ctx, `
+			INSERT INTO traffic_daily_flows (
+				device_id, day_date, process_name, process_display, root_domain, service_tag,
+				egress_node, proxy_group, route_type, rule,
+				up_bytes, down_bytes, tun_bytes, conn_count
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(device_id, day_date, process_name, root_domain, egress_node, route_type)
+			DO UPDATE SET
+				up_bytes = MAX(traffic_daily_flows.up_bytes, excluded.up_bytes),
+				down_bytes = MAX(traffic_daily_flows.down_bytes, excluded.down_bytes),
+				tun_bytes = MAX(traffic_daily_flows.tun_bytes, excluded.tun_bytes),
+				conn_count = MAX(traffic_daily_flows.conn_count, excluded.conn_count),
+				process_display = CASE WHEN excluded.process_display != '' THEN excluded.process_display ELSE traffic_daily_flows.process_display END,
+				service_tag = CASE WHEN excluded.service_tag != '' THEN excluded.service_tag ELSE traffic_daily_flows.service_tag END,
+				proxy_group = CASE WHEN excluded.proxy_group != '' THEN excluded.proxy_group ELSE traffic_daily_flows.proxy_group END,
+				rule = CASE WHEN excluded.rule != '' THEN excluded.rule ELSE traffic_daily_flows.rule END
+		`)
+		if prepErr != nil {
+			err = prepErr
+			s.mu.Unlock()
+			return protocol.BackupImportResult{}, err
+		}
+		for _, r := range archive.DailyFlows {
+			day := strings.TrimSpace(r.DayDate)
+			if day == "" {
+				continue
+			}
+			if err = ensureDeviceExists(r.DeviceID); err != nil {
+				_ = stmt.Close()
+				s.mu.Unlock()
+				return protocol.BackupImportResult{}, err
+			}
+			f := sanitizeFlowRecord(protocol.FlowRecord{
+				ProcessName:    r.ProcessName,
+				ProcessDisplay: r.ProcessDisplay,
+				RootDomain:     r.RootDomain,
+				ServiceTag:     r.ServiceTag,
+				EgressNode:     r.EgressNode,
+				ProxyGroup:     r.ProxyGroup,
+				RouteType:      r.RouteType,
+				Rule:           r.Rule,
+				UpBytes:        r.UpBytes,
+				DownBytes:      r.DownBytes,
+				ConnCount:      r.ConnCount,
+			}, 3600)
+			if _, err = stmt.ExecContext(ctx,
+				r.DeviceID, day, f.ProcessName, f.ProcessDisplay, f.RootDomain, f.ServiceTag,
+				f.EgressNode, f.ProxyGroup, f.RouteType, f.Rule,
+				f.UpBytes, f.DownBytes, r.TunBytes, f.ConnCount,
+			); err != nil {
+				_ = stmt.Close()
+				s.mu.Unlock()
+				return protocol.BackupImportResult{}, err
+			}
+			res.DailyFlowsRows++
 		}
 		_ = stmt.Close()
 	}

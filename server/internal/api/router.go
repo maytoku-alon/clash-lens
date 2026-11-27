@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/backup/import", s.requireAdmin(http.HandlerFunc(s.handleBackupImport)))
 	mux.Handle("GET /api/v1/storage/stats", s.requireAdmin(http.HandlerFunc(s.handleStorageStats)))
 	mux.Handle("POST /api/v1/storage/prune", s.requireAdmin(http.HandlerFunc(s.handleStoragePrune)))
+	mux.Handle("POST /api/v1/storage/compact", s.requireAdmin(http.HandlerFunc(s.handleStorageCompact)))
 
 	mux.Handle("GET /api/v1/analytics/overview", s.requireAdmin(http.HandlerFunc(s.handleOverview)))
 	mux.Handle("GET /api/v1/analytics/heatmap", s.requireAdmin(http.HandlerFunc(s.handleHeatmap)))
@@ -609,11 +610,25 @@ func (s *Server) handleStoragePrune(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	res, err := s.store.PruneStorage(r.Context(), req.RetainDays, req.Vacuum, s.cfg.TZOffsetMinutes)
+	res, err := s.store.PruneStorage(r.Context(), req.RetainDays, req.Vacuum, req.PreserveSummary, s.cfg.TZOffsetMinutes)
 	if errors.Is(err, store.ErrInvalidRetainDays) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) handleStorageCompact(w http.ResponseWriter, r *http.Request) {
+	var req protocol.StorageCompactRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	res, err := s.store.CompactStorage(r.Context(), req.MinuteRetainDays, req.HourlyRetainDays, req.Vacuum, s.cfg.TZOffsetMinutes)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

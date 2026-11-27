@@ -168,12 +168,7 @@ func (s *Store) GetOverview(ctx context.Context, rawFilter AnalyticsFilter) (pro
 	}
 
 	// 5. Top consumer in active range
-	table, tsCol, _ := chooseFlowSource(f, now)
-	align := int64(3600)
-	if table == "traffic_minute_flows" {
-		align = 60
-	}
-	where, args := buildFlowWhere(f, tsCol, align, "", "")
+	src := buildFlowSource(f, now, settings.MinuteRetentionDays, "", "")
 	var tc protocol.TopConsumerSummary
 	err = s.db.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT
@@ -184,11 +179,10 @@ func (s *Store) GetOverview(ctx context.Context, rawFilter AnalyticsFilter) (pro
 			SUM(CASE WHEN route_type = 'PROXY' THEN up_bytes + down_bytes ELSE 0 END) AS proxy_b,
 			SUM(CASE WHEN route_type = 'DIRECT' THEN up_bytes + down_bytes ELSE 0 END) AS direct_b
 		FROM %s
-		WHERE %s
 		GROUP BY process_display, root_domain
 		ORDER BY total_b DESC
 		LIMIT 1
-	`, table, where), args...).Scan(&tc.ProcessDisplay, &tc.RootDomain, &tc.ServiceTag, &tc.TotalBytes, &tc.ProxyBytes, &tc.DirectBytes)
+	`, src.Subquery), src.Args...).Scan(&tc.ProcessDisplay, &tc.RootDomain, &tc.ServiceTag, &tc.TotalBytes, &tc.ProxyBytes, &tc.DirectBytes)
 	if err == nil && tc.TotalBytes > 0 {
 		tc.ServiceTag = resolveServiceTag(tc.RootDomain, tc.ServiceTag, settings.DomainAliases)
 		out.TopConsumer = &tc
@@ -245,17 +239,18 @@ func (s *Store) computeQuota(ctx context.Context, deviceID string, tzOffsetMin i
 	startTS, endTS, elapsedDays, remDays, startLabel, endLabel := quotaCycleBounds(now, tzOffsetMin, settings.ResetDay)
 	startHour := startTS - (startTS % 3600)
 
-	q := `SELECT egress_node, COALESCE(SUM(up_bytes + down_bytes), 0)
-	      FROM traffic_hourly_flows
-	      WHERE route_type = 'PROXY' AND hour_ts >= ? AND hour_ts <= ?`
-	args := []any{startHour, endTS}
-	if deviceID != "" && deviceID != "all" {
-		q += ` AND device_id = ?`
-		args = append(args, deviceID)
+	qf := AnalyticsFilter{
+		DeviceID:    deviceID,
+		Scope:       "proxy",
+		From:        startHour,
+		To:          endTS,
+		TZOffsetMin: tzOffsetMin,
+		Interval:    "hour",
 	}
-	q += ` GROUP BY egress_node`
+	src := buildFlowSource(qf, now, settings.MinuteRetentionDays, "", "")
+	q := fmt.Sprintf(`SELECT egress_node, COALESCE(SUM(up_bytes + down_bytes), 0) FROM %s GROUP BY egress_node`, src.Subquery)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.db.QueryContext(ctx, q, src.Args...)
 	if err != nil {
 		return protocol.QuotaSummary{}, err
 	}
@@ -459,29 +454,23 @@ func (s *Store) GetTimeseries(ctx context.Context, rawFilter AnalyticsFilter, ex
 		return s.getDirectionTimeseries(ctx, f, out, stepSec, tzSec, tsIndex)
 	}
 
-	table, tsCol, _ := chooseFlowSource(f, now)
-	align := int64(3600)
-	if table == "traffic_minute_flows" {
-		align = 60
-	}
-	where, args := buildFlowWhere(f, tsCol, align, "", "")
+	settings, _ := s.GetSettings(ctx)
+	extraCol, extraVal := "", ""
 	if extraProcess != "" {
-		where += " AND process_display = ?"
-		args = append(args, extraProcess)
+		extraCol, extraVal = "process_display", extraProcess
+	} else if extraDomain != "" {
+		extraCol, extraVal = "root_domain", extraDomain
 	}
-	if extraDomain != "" {
-		where += " AND root_domain = ?"
-		args = append(args, extraDomain)
-	}
+	src := buildFlowSource(f, now, settings.MinuteRetentionDays, extraCol, extraVal)
 
 	if strings.ToLower(f.GroupBy) == "direction" {
-		bucketExpr := fmt.Sprintf("(%s / %d) * %d", tsCol, stepSec, stepSec)
+		bucketExpr := fmt.Sprintf("(ts / %d) * %d", stepSec, stepSec)
 		if interval == "day" {
-			bucketExpr = fmt.Sprintf("((%s + %d) / 86400) * 86400 - %d", tsCol, tzSec, tzSec)
+			bucketExpr = fmt.Sprintf("((ts + %d) / 86400) * 86400 - %d", tzSec, tzSec)
 		}
 		q := fmt.Sprintf(`SELECT %s AS b, COALESCE(SUM(down_bytes), 0), COALESCE(SUM(up_bytes), 0)
-			FROM %s WHERE %s GROUP BY b`, bucketExpr, table, where)
-		rows, err := s.db.QueryContext(ctx, q, args...)
+			FROM %s GROUP BY b`, bucketExpr, src.Subquery)
+		rows, err := s.db.QueryContext(ctx, q, src.Args...)
 		if err != nil {
 			return out, err
 		}
@@ -529,14 +518,14 @@ func (s *Store) GetTimeseries(ctx context.Context, rawFilter AnalyticsFilter, ex
 		dimExpr = "egress_node"
 	}
 
-	bucketExpr := fmt.Sprintf("(%s / %d) * %d", tsCol, stepSec, stepSec)
+	bucketExpr := fmt.Sprintf("(ts / %d) * %d", stepSec, stepSec)
 	if interval == "day" {
-		bucketExpr = fmt.Sprintf("((%s + %d) / 86400) * 86400 - %d", tsCol, tzSec, tzSec)
+		bucketExpr = fmt.Sprintf("((ts + %d) / 86400) * 86400 - %d", tzSec, tzSec)
 	}
 
 	q := fmt.Sprintf(`SELECT %s AS b, %s AS dim, COALESCE(SUM(up_bytes + down_bytes), 0) AS total_b
-		FROM %s WHERE %s GROUP BY b, dim`, bucketExpr, dimExpr, table, where)
-	rows, err := s.db.QueryContext(ctx, q, args...)
+		FROM %s GROUP BY b, dim`, bucketExpr, dimExpr, src.Subquery)
+	rows, err := s.db.QueryContext(ctx, q, src.Args...)
 	if err != nil {
 		return out, err
 	}
@@ -587,7 +576,6 @@ func (s *Store) GetTimeseries(ctx context.Context, rawFilter AnalyticsFilter, ex
 		topCount = maxTop
 	}
 
-	settings, _ := s.GetSettings(ctx)
 	series := make([]protocol.TimeseriesSeries, 0, topCount+1)
 	for i := 0; i < topCount; i++ {
 		dim := pairs[i].name
@@ -759,30 +747,26 @@ func (s *Store) GetBursts(ctx context.Context, rawFilter AnalyticsFilter) (proto
 		devNames[d.ID] = d.Name
 	}
 
-	table, tsCol, isMinute := chooseFlowSource(f, now)
-	align := int64(3600)
+	src := buildFlowSource(f, now, settings.MinuteRetentionDays, "", "")
 	granularity := "hour"
-	if isMinute {
-		align = 60
+	if src.IsMinute {
 		granularity = "minute"
 	}
-	where, args := buildFlowWhere(f, tsCol, align, "", "")
 	limit := f.Limit
 	if limit <= 0 || limit > 30 {
 		limit = 12
 	}
 
 	q := fmt.Sprintf(`
-		SELECT %s AS b, device_id, process_display, root_domain, MAX(service_tag),
-		       egress_node, route_type, inbound_mode,
+		SELECT ts AS b, device_id, process_display, root_domain, MAX(service_tag),
+		       egress_node, route_type, MAX(inbound_mode),
 		       SUM(up_bytes) AS up_b, SUM(down_bytes) AS down_b, SUM(up_bytes + down_bytes) AS tot_b
 		FROM %s
-		WHERE %s
 		GROUP BY b, device_id, process_display, root_domain, egress_node, route_type, inbound_mode
 		ORDER BY tot_b DESC
 		LIMIT ?
-	`, tsCol, table, where)
-	args = append(args, limit)
+	`, src.Subquery)
+	args := append(src.Args, limit)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -816,14 +800,11 @@ func (s *Store) ListApps(ctx context.Context, rawFilter AnalyticsFilter) (protoc
 	now := time.Now().Unix()
 	f := normalizeFilter(rawFilter, now)
 	settings, _ := s.GetSettings(ctx)
-	table, tsCol, isMinute := chooseFlowSource(f, now)
-	align := int64(3600)
-	if isMinute {
-		align = 60
-	}
-	where, args := buildFlowWhere(f, tsCol, align, "", "")
+	src := buildFlowSource(f, now, settings.MinuteRetentionDays, "", "")
+	outerWhere := "1=1"
+	args := append([]any{}, src.Args...)
 	if f.Search != "" {
-		where += " AND (LOWER(process_display) LIKE ? OR LOWER(process_name) LIKE ?)"
+		outerWhere = "(LOWER(process_display) LIKE ? OR LOWER(process_name) LIKE ?)"
 		like := "%" + strings.ToLower(strings.TrimSpace(f.Search)) + "%"
 		args = append(args, like, like)
 	}
@@ -838,8 +819,8 @@ func (s *Store) ListApps(ctx context.Context, rawFilter AnalyticsFilter) (protoc
 			SUM(CASE WHEN route_type = 'REJECT' THEN up_bytes + down_bytes ELSE 0 END),
 			SUM(up_bytes),
 			SUM(down_bytes),
-			SUM(CASE WHEN inbound_mode = 'TUN' THEN up_bytes + down_bytes ELSE 0 END),
-			SUM(CASE WHEN inbound_mode = 'PROXY_PORT' THEN up_bytes + down_bytes ELSE 0 END),
+			SUM(tun_bytes),
+			SUM(proxy_port_bytes),
 			SUM(conn_count),
 			COUNT(DISTINCT root_domain)
 		FROM %s
@@ -847,7 +828,7 @@ func (s *Store) ListApps(ctx context.Context, rawFilter AnalyticsFilter) (protoc
 		GROUP BY process_display
 		ORDER BY total_b DESC
 		LIMIT ?
-	`, table, where)
+	`, src.Subquery, outerWhere)
 	args = append(args, f.Limit)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -877,15 +858,13 @@ func (s *Store) ListApps(ctx context.Context, rawFilter AnalyticsFilter) (protoc
 
 	// Fetch top domains per listed process in one query
 	if len(items) > 0 {
-		baseWhere, baseArgs := buildFlowWhere(f, tsCol, align, "", "")
 		domQ := fmt.Sprintf(`
 			SELECT process_display, root_domain, MAX(service_tag), SUM(up_bytes + down_bytes) AS total_b
 			FROM %s
-			WHERE %s
 			GROUP BY process_display, root_domain
 			ORDER BY process_display, total_b DESC
-		`, table, baseWhere)
-		domRows, err := s.db.QueryContext(ctx, domQ, baseArgs...)
+		`, src.Subquery)
+		domRows, err := s.db.QueryContext(ctx, domQ, src.Args...)
 		if err == nil {
 			defer domRows.Close()
 			topByProc := make(map[string][]protocol.AppDomainBrief)
@@ -923,25 +902,19 @@ func (s *Store) GetAppDetail(ctx context.Context, rawFilter AnalyticsFilter, pro
 	now := time.Now().Unix()
 	f := normalizeFilter(rawFilter, now)
 	settings, _ := s.GetSettings(ctx)
-	table, tsCol, isMinute := chooseFlowSource(f, now)
-	align := int64(3600)
-	if isMinute {
-		align = 60
-	}
-	where, args := buildFlowWhere(f, tsCol, align, "process_display", processDisplay)
+	src := buildFlowSource(f, now, settings.MinuteRetentionDays, "process_display", processDisplay)
 
 	q := fmt.Sprintf(`
 		SELECT
 			root_domain, MAX(service_tag), host, egress_node, MAX(proxy_group),
 			route_type, inbound_mode, MAX(rule),
-			SUM(up_bytes) AS up_b, SUM(down_bytes) AS down_b, SUM(conn_count) AS conns
+			SUM(up_bytes) AS up_b, SUM(down_bytes) AS down_b, SUM(tun_bytes) AS tun_b, SUM(conn_count) AS conns
 		FROM %s
-		WHERE %s
 		GROUP BY root_domain, host, egress_node, route_type, inbound_mode
 		ORDER BY (up_b + down_b) DESC
-	`, table, where)
+	`, src.Subquery)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.db.QueryContext(ctx, q, src.Args...)
 	if err != nil {
 		return protocol.AppDetailResponse{}, err
 	}
@@ -957,8 +930,8 @@ func (s *Store) GetAppDetail(ctx context.Context, rawFilter AnalyticsFilter, pro
 
 	for rows.Next() {
 		var rootDom, tag, host, egress, group, route, inbound, rule string
-		var upB, downB, conns int64
-		if err := rows.Scan(&rootDom, &tag, &host, &egress, &group, &route, &inbound, &rule, &upB, &downB, &conns); err != nil {
+		var upB, downB, tunB, conns int64
+		if err := rows.Scan(&rootDom, &tag, &host, &egress, &group, &route, &inbound, &rule, &upB, &downB, &tunB, &conns); err != nil {
 			return protocol.AppDetailResponse{}, err
 		}
 		tot := upB + downB
@@ -979,10 +952,9 @@ func (s *Store) GetAppDetail(ctx context.Context, rawFilter AnalyticsFilter, pro
 		case protocol.RouteReject:
 			summary.RejectBytes += tot
 		}
-		if inbound == protocol.InboundTUN {
-			summary.TunBytes += tot
-		} else if inbound == protocol.InboundProxyPort {
-			summary.ProxyPortBytes += tot
+		summary.TunBytes += tunB
+		if tot > tunB {
+			summary.ProxyPortBytes += tot - tunB
 		}
 
 		grp, ok := domMap[rootDom]
@@ -1004,9 +976,7 @@ func (s *Store) GetAppDetail(ctx context.Context, rawFilter AnalyticsFilter, pro
 		} else if route == protocol.RouteDirect {
 			grp.DirectBytes += tot
 		}
-		if inbound == protocol.InboundTUN {
-			grp.TunBytes += tot
-		}
+		grp.TunBytes += tunB
 
 		grp.Subdomains = append(grp.Subdomains, protocol.SubdomainFlowRow{
 			Host:        host,
@@ -1178,14 +1148,11 @@ func (s *Store) ListDomains(ctx context.Context, rawFilter AnalyticsFilter) (pro
 	now := time.Now().Unix()
 	f := normalizeFilter(rawFilter, now)
 	settings, _ := s.GetSettings(ctx)
-	table, tsCol, isMinute := chooseFlowSource(f, now)
-	align := int64(3600)
-	if isMinute {
-		align = 60
-	}
-	where, args := buildFlowWhere(f, tsCol, align, "", "")
+	src := buildFlowSource(f, now, settings.MinuteRetentionDays, "", "")
+	outerWhere := "1=1"
+	args := append([]any{}, src.Args...)
 	if f.Search != "" {
-		where += " AND (LOWER(root_domain) LIKE ? OR LOWER(service_tag) LIKE ?)"
+		outerWhere = "(LOWER(root_domain) LIKE ? OR LOWER(service_tag) LIKE ?)"
 		like := "%" + strings.ToLower(strings.TrimSpace(f.Search)) + "%"
 		args = append(args, like, like)
 	}
@@ -1197,7 +1164,7 @@ func (s *Store) ListDomains(ctx context.Context, rawFilter AnalyticsFilter) (pro
 			SUM(CASE WHEN route_type = 'PROXY' THEN up_bytes + down_bytes ELSE 0 END),
 			SUM(CASE WHEN route_type = 'DIRECT' THEN up_bytes + down_bytes ELSE 0 END),
 			SUM(up_bytes), SUM(down_bytes),
-			SUM(CASE WHEN inbound_mode = 'TUN' THEN up_bytes + down_bytes ELSE 0 END),
+			SUM(tun_bytes),
 			SUM(conn_count),
 			COUNT(DISTINCT process_display)
 		FROM %s
@@ -1205,7 +1172,7 @@ func (s *Store) ListDomains(ctx context.Context, rawFilter AnalyticsFilter) (pro
 		GROUP BY root_domain
 		ORDER BY total_b DESC
 		LIMIT ?
-	`, table, where)
+	`, src.Subquery, outerWhere)
 	args = append(args, f.Limit)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -1235,15 +1202,13 @@ func (s *Store) ListDomains(ctx context.Context, rawFilter AnalyticsFilter) (pro
 	}
 
 	if len(items) > 0 {
-		baseWhere, baseArgs := buildFlowWhere(f, tsCol, align, "", "")
 		appQ := fmt.Sprintf(`
 			SELECT root_domain, process_display, SUM(up_bytes + down_bytes) AS total_b
 			FROM %s
-			WHERE %s
 			GROUP BY root_domain, process_display
 			ORDER BY root_domain, total_b DESC
-		`, table, baseWhere)
-		appRows, err := s.db.QueryContext(ctx, appQ, baseArgs...)
+		`, src.Subquery)
+		appRows, err := s.db.QueryContext(ctx, appQ, src.Args...)
 		if err == nil {
 			defer appRows.Close()
 			topByDom := make(map[string][]protocol.DomainAppBrief)
@@ -1280,25 +1245,19 @@ func (s *Store) GetDomainDetail(ctx context.Context, rawFilter AnalyticsFilter, 
 	now := time.Now().Unix()
 	f := normalizeFilter(rawFilter, now)
 	settings, _ := s.GetSettings(ctx)
-	table, tsCol, isMinute := chooseFlowSource(f, now)
-	align := int64(3600)
-	if isMinute {
-		align = 60
-	}
-	where, args := buildFlowWhere(f, tsCol, align, "root_domain", rootDomain)
+	src := buildFlowSource(f, now, settings.MinuteRetentionDays, "root_domain", rootDomain)
 
 	q := fmt.Sprintf(`
 		SELECT
 			process_display, MAX(service_tag), host, egress_node, MAX(proxy_group),
 			route_type, inbound_mode, MAX(rule),
-			SUM(up_bytes) AS up_b, SUM(down_bytes) AS down_b, SUM(conn_count) AS conns
+			SUM(up_bytes) AS up_b, SUM(down_bytes) AS down_b, SUM(tun_bytes) AS tun_b, SUM(conn_count) AS conns
 		FROM %s
-		WHERE %s
 		GROUP BY process_display, host, egress_node, route_type, inbound_mode
 		ORDER BY (up_b + down_b) DESC
-	`, table, where)
+	`, src.Subquery)
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.db.QueryContext(ctx, q, src.Args...)
 	if err != nil {
 		return protocol.DomainDetailResponse{}, err
 	}
@@ -1309,8 +1268,8 @@ func (s *Store) GetDomainDetail(ctx context.Context, rawFilter AnalyticsFilter, 
 
 	for rows.Next() {
 		var proc, tag, host, egress, group, route, inbound, rule string
-		var upB, downB, conns int64
-		if err := rows.Scan(&proc, &tag, &host, &egress, &group, &route, &inbound, &rule, &upB, &downB, &conns); err != nil {
+		var upB, downB, tunB, conns int64
+		if err := rows.Scan(&proc, &tag, &host, &egress, &group, &route, &inbound, &rule, &upB, &downB, &tunB, &conns); err != nil {
 			return protocol.DomainDetailResponse{}, err
 		}
 		tot := upB + downB
@@ -1329,9 +1288,7 @@ func (s *Store) GetDomainDetail(ctx context.Context, rawFilter AnalyticsFilter, 
 		} else if route == protocol.RouteDirect {
 			summary.DirectBytes += tot
 		}
-		if inbound == protocol.InboundTUN {
-			summary.TunBytes += tot
-		}
+		summary.TunBytes += tunB
 
 		ar, ok := appMap[proc]
 		if !ok {
@@ -1347,9 +1304,7 @@ func (s *Store) GetDomainDetail(ctx context.Context, rawFilter AnalyticsFilter, 
 		} else if route == protocol.RouteDirect {
 			ar.DirectBytes += tot
 		}
-		if inbound == protocol.InboundTUN {
-			ar.TunBytes += tot
-		}
+		ar.TunBytes += tunB
 		ar.Subdomains = append(ar.Subdomains, protocol.SubdomainFlowRow{
 			Host:        host,
 			EgressNode:  egress,
@@ -1405,12 +1360,7 @@ func (s *Store) GetNodesAnalytics(ctx context.Context, rawFilter AnalyticsFilter
 	if err != nil {
 		return protocol.NodesAnalyticsResponse{}, err
 	}
-	table, tsCol, isMinute := chooseFlowSource(f, now)
-	align := int64(3600)
-	if isMinute {
-		align = 60
-	}
-	where, args := buildFlowWhere(f, tsCol, align, "", "")
+	src := buildFlowSource(f, now, settings.MinuteRetentionDays, "", "")
 
 	out := protocol.NodesAnalyticsResponse{
 		RouteSplit: []protocol.RouteSplitItem{},
@@ -1422,8 +1372,8 @@ func (s *Store) GetNodesAnalytics(ctx context.Context, rawFilter AnalyticsFilter
 	// 1. Route split
 	rRows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT route_type, SUM(up_bytes) AS up_b, SUM(down_bytes) AS down_b, SUM(up_bytes + down_bytes) AS tot_b
-		FROM %s WHERE %s GROUP BY route_type ORDER BY tot_b DESC
-	`, table, where), args...)
+		FROM %s GROUP BY route_type ORDER BY tot_b DESC
+	`, src.Subquery), src.Args...)
 	if err != nil {
 		return out, err
 	}
@@ -1445,11 +1395,11 @@ func (s *Store) GetNodesAnalytics(ctx context.Context, rawFilter AnalyticsFilter
 	nRows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT egress_node, MAX(proxy_group), route_type,
 		       SUM(up_bytes), SUM(down_bytes), SUM(up_bytes + down_bytes) AS tot_b, SUM(conn_count)
-		FROM %s WHERE %s
+		FROM %s
 		GROUP BY egress_node, route_type
 		ORDER BY tot_b DESC
 		LIMIT 50
-	`, table, where), args...)
+	`, src.Subquery), src.Args...)
 	if err != nil {
 		return out, err
 	}
@@ -1474,11 +1424,11 @@ func (s *Store) GetNodesAnalytics(ctx context.Context, rawFilter AnalyticsFilter
 	ruRows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT CASE WHEN rule = '' THEN '(未标注规则)' ELSE rule END AS r_name,
 		       route_type, SUM(up_bytes + down_bytes) AS tot_b, SUM(conn_count)
-		FROM %s WHERE %s
+		FROM %s
 		GROUP BY r_name, route_type
 		ORDER BY tot_b DESC
 		LIMIT 25
-	`, table, where), args...)
+	`, src.Subquery), src.Args...)
 	if err != nil {
 		return out, err
 	}
@@ -1496,15 +1446,15 @@ func (s *Store) GetNodesAnalytics(ctx context.Context, rawFilter AnalyticsFilter
 	// 4. Proxy Audit (top heavy flows going through PROXY)
 	proxyFilter := f
 	proxyFilter.Scope = "proxy"
-	pWhere, pArgs := buildFlowWhere(proxyFilter, tsCol, align, "", "")
+	proxySrc := buildFlowSource(proxyFilter, now, settings.MinuteRetentionDays, "", "")
 	paRows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT process_display, root_domain, MAX(service_tag), MAX(rule), egress_node, inbound_mode,
+		SELECT process_display, root_domain, MAX(service_tag), MAX(rule), egress_node, MAX(inbound_mode),
 		       SUM(up_bytes + down_bytes) AS tot_b
-		FROM %s WHERE %s
+		FROM %s
 		GROUP BY process_display, root_domain, egress_node, inbound_mode
 		ORDER BY tot_b DESC
 		LIMIT 20
-	`, table, pWhere), pArgs...)
+	`, proxySrc.Subquery), proxySrc.Args...)
 	if err != nil {
 		return out, err
 	}

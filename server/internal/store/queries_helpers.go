@@ -22,6 +22,12 @@ type AnalyticsFilter struct {
 	OnlineThresholdSec int64
 }
 
+type flowSource struct {
+	Subquery string
+	Args     []any
+	IsMinute bool
+}
+
 func fixedLoc(tzOffsetMin int) *time.Location {
 	return time.FixedZone("LOCAL", tzOffsetMin*60)
 }
@@ -36,7 +42,7 @@ func localDayBounds(now int64, tzOffsetMin int) (todayStart, todayEnd, yesterday
 	y, m, d := t.Date()
 	todayMidnight := time.Date(y, m, d, 0, 0, 0, 0, loc)
 	todayStart = todayMidnight.Unix()
-	todayEnd = todayMidnight.Add(24 * time.Hour).Unix() - 1
+	todayEnd = todayMidnight.Add(24*time.Hour).Unix() - 1
 	yesterdayStart = todayMidnight.Add(-24 * time.Hour).Unix()
 	yesterdayEnd = todayStart - 1
 	return
@@ -110,13 +116,91 @@ func normalizeFilter(f AnalyticsFilter, now int64) AnalyticsFilter {
 	return f
 }
 
-func chooseFlowSource(f AnalyticsFilter, now int64) (table string, tsCol string, isMinute bool) {
-	minuteCutoff := now - 14*86400
-	span := f.To - f.From
-	if f.From >= minuteCutoff && (f.Interval == "minute" || (f.Interval == "auto" && span <= 86400)) {
-		return "traffic_minute_flows", "bucket_ts", true
+func shouldUseMinuteFlows(f AnalyticsFilter, now int64, minuteRetainDays int) bool {
+	if minuteRetainDays <= 0 {
+		minuteRetainDays = defaultMinuteRetentionDays
 	}
-	return "traffic_hourly_flows", "hour_ts", false
+	minuteCutoff := now - int64(minuteRetainDays)*86400
+	span := f.To - f.From
+	return f.From >= minuteCutoff && (f.Interval == "minute" || (f.Interval == "auto" && span <= 86400))
+}
+
+func appendSharedFlowFilters(clauses []string, args []any, f AnalyticsFilter, extraCol, extraVal string) ([]string, []any) {
+	if f.DeviceID != "" && f.DeviceID != "all" {
+		clauses = append(clauses, "device_id = ?")
+		args = append(args, f.DeviceID)
+	}
+	switch strings.ToLower(f.Scope) {
+	case "proxy":
+		clauses = append(clauses, "route_type = 'PROXY'")
+	case "direct":
+		clauses = append(clauses, "route_type = 'DIRECT'")
+	}
+	if extraCol != "" && extraVal != "" {
+		clauses = append(clauses, fmt.Sprintf("%s = ?", extraCol))
+		args = append(args, extraVal)
+	}
+	return clauses, args
+}
+
+// buildFlowSource returns a pushdown-indexed SQL subquery unifying hot minute rows or warm hourly + cold daily rows.
+func buildFlowSource(f AnalyticsFilter, now int64, minuteRetainDays int, extraCol, extraVal string) flowSource {
+	if shouldUseMinuteFlows(f, now, minuteRetainDays) {
+		fromVal := f.From - (f.From % 60)
+		clauses := []string{"bucket_ts >= ?", "bucket_ts <= ?"}
+		args := []any{fromVal, f.To}
+		clauses, args = appendSharedFlowFilters(clauses, args, f, extraCol, extraVal)
+		where := strings.Join(clauses, " AND ")
+		sub := fmt.Sprintf(`(
+			SELECT device_id, bucket_ts AS ts, process_name, process_display, root_domain, service_tag,
+			       host, egress_node, proxy_group, route_type, inbound_mode, rule,
+			       up_bytes, down_bytes,
+			       CASE WHEN inbound_mode = 'TUN' THEN up_bytes + down_bytes ELSE 0 END AS tun_bytes,
+			       CASE WHEN inbound_mode = 'PROXY_PORT' THEN up_bytes + down_bytes ELSE 0 END AS proxy_port_bytes,
+			       conn_count
+			FROM traffic_minute_flows
+			WHERE %s
+		)`, where)
+		return flowSource{Subquery: sub, Args: args, IsMinute: true}
+	}
+
+	fromHour := f.From - (f.From % 3600)
+	hClauses := []string{"hour_ts >= ?", "hour_ts <= ?"}
+	hArgs := []any{fromHour, f.To}
+	hClauses, hArgs = appendSharedFlowFilters(hClauses, hArgs, f, extraCol, extraVal)
+	hWhere := strings.Join(hClauses, " AND ")
+
+	startDate := formatDayDate(f.From, f.TZOffsetMin)
+	endDate := formatDayDate(f.To, f.TZOffsetMin)
+	tzSec := int64(f.TZOffsetMin * 60)
+	dClauses := []string{"day_date >= ?", "day_date <= ?"}
+	dArgs := []any{tzSec, startDate, endDate}
+	dClauses, dArgs = appendSharedFlowFilters(dClauses, dArgs, f, extraCol, extraVal)
+	dWhere := strings.Join(dClauses, " AND ")
+
+	allArgs := append(hArgs, dArgs...)
+	sub := fmt.Sprintf(`(
+		SELECT device_id, hour_ts AS ts, process_name, process_display, root_domain, service_tag,
+		       host, egress_node, proxy_group, route_type, inbound_mode, rule,
+		       up_bytes, down_bytes,
+		       CASE WHEN inbound_mode = 'TUN' THEN up_bytes + down_bytes ELSE 0 END AS tun_bytes,
+		       CASE WHEN inbound_mode = 'PROXY_PORT' THEN up_bytes + down_bytes ELSE 0 END AS proxy_port_bytes,
+		       conn_count
+		FROM traffic_hourly_flows
+		WHERE %s
+		UNION ALL
+		SELECT device_id, (CAST(strftime('%%s', day_date || ' 00:00:00') AS INTEGER) - ?) AS ts,
+		       process_name, process_display, root_domain, service_tag,
+		       '*' AS host, egress_node, proxy_group, route_type,
+		       CASE WHEN tun_bytes > 0 THEN 'TUN' ELSE 'PROXY_PORT' END AS inbound_mode,
+		       rule, up_bytes, down_bytes,
+		       tun_bytes,
+		       CASE WHEN (up_bytes + down_bytes) > tun_bytes THEN (up_bytes + down_bytes - tun_bytes) ELSE 0 END AS proxy_port_bytes,
+		       conn_count
+		FROM traffic_daily_flows
+		WHERE %s
+	)`, hWhere, dWhere)
+	return flowSource{Subquery: sub, Args: allArgs, IsMinute: false}
 }
 
 func chooseTotalInterval(f AnalyticsFilter) string {
@@ -132,34 +216,6 @@ func chooseTotalInterval(f AnalyticsFilter) string {
 	default:
 		return "day"
 	}
-}
-
-func buildFlowWhere(f AnalyticsFilter, tsCol string, alignStep int64, extraCol string, extraVal string) (string, []any) {
-	fromVal := f.From
-	if alignStep > 1 {
-		fromVal = f.From - (f.From % alignStep)
-	}
-	clauses := []string{
-		fmt.Sprintf("%s >= ?", tsCol),
-		fmt.Sprintf("%s <= ?", tsCol),
-	}
-	args := []any{fromVal, f.To}
-
-	if f.DeviceID != "" && f.DeviceID != "all" {
-		clauses = append(clauses, "device_id = ?")
-		args = append(args, f.DeviceID)
-	}
-	switch strings.ToLower(f.Scope) {
-	case "proxy":
-		clauses = append(clauses, "route_type = 'PROXY'")
-	case "direct":
-		clauses = append(clauses, "route_type = 'DIRECT'")
-	}
-	if extraCol != "" && extraVal != "" {
-		clauses = append(clauses, fmt.Sprintf("%s = ?", extraCol))
-		args = append(args, extraVal)
-	}
-	return strings.Join(clauses, " AND "), args
 }
 
 func matchMultiplier(node string, rules []protocol.NodeMultiplierRule) float64 {

@@ -89,6 +89,23 @@ func (s *Store) migrate() error {
 			conn_count INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (device_id, hour_ts, process_name, root_domain, host, egress_node, route_type, inbound_mode)
 		);`,
+		`CREATE TABLE IF NOT EXISTS traffic_daily_flows (
+			device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+			day_date TEXT NOT NULL,
+			process_name TEXT NOT NULL,
+			process_display TEXT NOT NULL,
+			root_domain TEXT NOT NULL,
+			service_tag TEXT NOT NULL DEFAULT '',
+			egress_node TEXT NOT NULL,
+			proxy_group TEXT NOT NULL DEFAULT '',
+			route_type TEXT NOT NULL,
+			rule TEXT NOT NULL DEFAULT '',
+			up_bytes INTEGER NOT NULL DEFAULT 0,
+			down_bytes INTEGER NOT NULL DEFAULT 0,
+			tun_bytes INTEGER NOT NULL DEFAULT 0,
+			conn_count INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (device_id, day_date, process_name, root_domain, egress_node, route_type)
+		);`,
 		`CREATE TABLE IF NOT EXISTS traffic_daily_summary (
 			device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
 			day_date TEXT NOT NULL,
@@ -106,6 +123,8 @@ func (s *Store) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_hourly_flows_ts_dev ON traffic_hourly_flows(hour_ts, device_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_hourly_flows_proc ON traffic_hourly_flows(process_display, hour_ts);`,
 		`CREATE INDEX IF NOT EXISTS idx_hourly_flows_dom ON traffic_hourly_flows(root_domain, hour_ts);`,
+		`CREATE INDEX IF NOT EXISTS idx_daily_flows_date_dev ON traffic_daily_flows(day_date, device_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_daily_flows_proc ON traffic_daily_flows(process_display, day_date);`,
 		`CREATE INDEX IF NOT EXISTS idx_daily_summary_date ON traffic_daily_summary(day_date);`,
 	}
 

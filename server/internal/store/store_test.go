@@ -646,11 +646,11 @@ func TestStorageStatsAndPrune(t *testing.T) {
 		t.Fatalf("unexpected initial storage stats: %+v", stats)
 	}
 
-	if _, err := st.PruneStorage(ctx, 6, false, 480); !errors.Is(err, store.ErrInvalidRetainDays) {
+	if _, err := st.PruneStorage(ctx, 6, false, false, 480); !errors.Is(err, store.ErrInvalidRetainDays) {
 		t.Fatalf("expected ErrInvalidRetainDays for retain_days=6, got %v", err)
 	}
 
-	res, err := st.PruneStorage(ctx, 30, true, 480)
+	res, err := st.PruneStorage(ctx, 30, true, false, 480)
 	if err != nil {
 		t.Fatalf("PruneStorage: %v", err)
 	}
@@ -664,5 +664,182 @@ func TestStorageStatsAndPrune(t *testing.T) {
 	}
 	if afterStats.MinuteTotalsRows != 1 || afterStats.MinuteFlowsRows != 1 || afterStats.HourlyFlowsRows != 1 {
 		t.Fatalf("unexpected remaining rows after prune: %+v", afterStats)
+	}
+}
+
+func TestTieredCompactionAndUnifiedQueries(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "tiered.db")
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	dev, _, err := st.CreateDevice(ctx, protocol.CreateDeviceRequest{Name: "Tier-PC", OS: "windows"})
+	if err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+
+	if _, err := st.SaveSettings(ctx, protocol.SettingsPayload{
+		MonthlyQuotaGB:      100,
+		ResetDay:            1,
+		BurstThresholdMB:    100,
+		MinuteRetentionDays: 7,
+		HourlyRetentionDays: 30,
+		NodeMultipliers:     []protocol.NodeMultiplierRule{{Pattern: "HK*", Multiplier: 1.5}},
+	}); err != nil {
+		t.Fatalf("SaveSettings: %v", err)
+	}
+
+	now := time.Now().Unix()
+	loc := time.FixedZone("UTC+8", 480*60)
+	nowLocal := time.Unix(now, 0).In(loc)
+	// Cold bucket: 45 days ago local noon (strictly older than 30d local midnight).
+	coldDay := time.Date(nowLocal.Year(), nowLocal.Month(), nowLocal.Day(), 12, 0, 0, 0, loc).AddDate(0, 0, -45)
+	coldHour1 := coldDay.Unix()
+	coldHour2 := coldDay.Add(3 * time.Hour).Unix()
+	// Warm bucket: 10 days ago.
+	warmHour := time.Date(nowLocal.Year(), nowLocal.Month(), nowLocal.Day(), 15, 0, 0, 0, loc).AddDate(0, 0, -10).Unix()
+	// Hot bucket: 1 hour ago.
+	hotMin := ((now - 3600) / 60) * 60
+
+	if _, err := st.IngestBatch(ctx, dev.ID, protocol.IngestBatchRequest{
+		BatchID: "tiered-seed-1",
+		MinuteTotals: []protocol.MinuteTotalRecord{
+			{BucketTS: coldHour1, ProxyDown: 3000, ProxyUp: 500, ConnCount: 3, TunBytes: 3500},
+			{BucketTS: warmHour, ProxyDown: 4000, ConnCount: 4, ProxyPortBytes: 4000},
+			{BucketTS: hotMin, DirectDown: 2000, ConnCount: 2, TunBytes: 2000},
+		},
+		MinuteFlows: []protocol.FlowRecord{
+			{
+				BucketTS: hotMin, ProcessName: "chrome.exe", ProcessDisplay: "Chrome",
+				RootDomain: "bilibili.com", Host: "upos.bilivideo.com", EgressNode: "DIRECT",
+				ProxyGroup: "DIRECT", RouteType: protocol.RouteDirect, InboundMode: protocol.InboundTUN,
+				Rule: "GEOSITE,bilibili", DownBytes: 2000, ConnCount: 2,
+			},
+		},
+		HourlyFlows: []protocol.FlowRecord{
+			{
+				BucketTS: coldHour1, ProcessName: "chrome.exe", ProcessDisplay: "Chrome",
+				RootDomain: "youtube.com", Host: "rr1.googlevideo.com", EgressNode: "HK-01",
+				ProxyGroup: "Proxy", RouteType: protocol.RouteProxy, InboundMode: protocol.InboundTUN,
+				Rule: "DOMAIN-SUFFIX,googlevideo.com", UpBytes: 500, DownBytes: 2000, ConnCount: 2,
+			},
+			{
+				BucketTS: coldHour2, ProcessName: "chrome.exe", ProcessDisplay: "Chrome",
+				RootDomain: "youtube.com", Host: "rr2.googlevideo.com", EgressNode: "HK-01",
+				ProxyGroup: "Proxy", RouteType: protocol.RouteProxy, InboundMode: protocol.InboundProxyPort,
+				Rule: "DOMAIN-SUFFIX,googlevideo.com", DownBytes: 1000, ConnCount: 1,
+			},
+			{
+				BucketTS: warmHour, ProcessName: "chrome.exe", ProcessDisplay: "Chrome",
+				RootDomain: "github.com", Host: "api.github.com", EgressNode: "HK-01",
+				ProxyGroup: "Proxy", RouteType: protocol.RouteProxy, InboundMode: protocol.InboundProxyPort,
+				Rule: "DOMAIN-SUFFIX,github.com", DownBytes: 4000, ConnCount: 4,
+			},
+		},
+	}, 480); err != nil {
+		t.Fatalf("IngestBatch: %v", err)
+	}
+
+	filter := store.AnalyticsFilter{
+		DeviceID:    dev.ID,
+		Scope:       "all",
+		From:        coldDay.AddDate(0, 0, -1).Unix(),
+		To:          now + 3600,
+		TZOffsetMin: 480,
+		Interval:    "day",
+		GroupBy:     "process",
+	}
+
+	appsBefore, err := st.ListApps(ctx, filter)
+	if err != nil || len(appsBefore.Items) != 1 {
+		t.Fatalf("ListApps before compact: err=%v items=%+v", err, appsBefore.Items)
+	}
+	domsBefore, err := st.ListDomains(ctx, filter)
+	if err != nil {
+		t.Fatalf("ListDomains before compact: %v", err)
+	}
+	nodesBefore, err := st.GetNodesAnalytics(ctx, filter)
+	if err != nil {
+		t.Fatalf("GetNodesAnalytics before compact: %v", err)
+	}
+	tsBefore, err := st.GetTimeseries(ctx, filter, "", "")
+	if err != nil {
+		t.Fatalf("GetTimeseries before compact: %v", err)
+	}
+
+	// Run lossless tiered compaction (7d minute, 30d hourly -> cold daily_flows).
+	cRes, err := st.CompactStorage(ctx, 7, 30, true, 480)
+	if err != nil {
+		t.Fatalf("CompactStorage: %v", err)
+	}
+	if cRes.ArchivedHourlyRows != 2 || cRes.DailyFlowsUpserted != 1 {
+		t.Fatalf("expected 2 cold hourly rows folded into 1 daily row, got %+v", cRes)
+	}
+
+	appsAfter, err := st.ListApps(ctx, filter)
+	if err != nil || len(appsAfter.Items) != 1 {
+		t.Fatalf("ListApps after compact: err=%v items=%+v", err, appsAfter.Items)
+	}
+	if appsAfter.TotalBytes != appsBefore.TotalBytes ||
+		appsAfter.Items[0].TunBytes != appsBefore.Items[0].TunBytes ||
+		appsAfter.Items[0].ProxyBytes != appsBefore.Items[0].ProxyBytes ||
+		appsAfter.Items[0].DirectBytes != appsBefore.Items[0].DirectBytes {
+		t.Fatalf("ListApps mismatch across cold compaction: before=%+v after=%+v", appsBefore.Items[0], appsAfter.Items[0])
+	}
+
+	ytDetail, err := st.GetAppDetail(ctx, filter, "Chrome")
+	if err != nil {
+		t.Fatalf("GetAppDetail after compact: %v", err)
+	}
+	if ytDetail.Summary.TunBytes != appsBefore.Items[0].TunBytes || ytDetail.Summary.TotalBytes != appsBefore.TotalBytes {
+		t.Fatalf("GetAppDetail summary mismatch after compact: %+v vs %+v", ytDetail.Summary, appsBefore.Items[0])
+	}
+
+	domsAfter, err := st.ListDomains(ctx, filter)
+	if err != nil || domsAfter.TotalBytes != domsBefore.TotalBytes {
+		t.Fatalf("ListDomains mismatch after compact: err=%v before=%d after=%d", err, domsBefore.TotalBytes, domsAfter.TotalBytes)
+	}
+	ytDomDetail, err := st.GetDomainDetail(ctx, filter, "youtube.com")
+	if err != nil || ytDomDetail.Summary.TotalBytes != 3500 || ytDomDetail.Summary.TunBytes != 2500 {
+		t.Fatalf("GetDomainDetail(youtube.com) mismatch after compact: err=%v summary=%+v", err, ytDomDetail.Summary)
+	}
+
+	nodesAfter, err := st.GetNodesAnalytics(ctx, filter)
+	if err != nil || nodesAfter.TotalBytes != nodesBefore.TotalBytes {
+		t.Fatalf("GetNodesAnalytics mismatch after compact: err=%v before=%d after=%d", err, nodesBefore.TotalBytes, nodesAfter.TotalBytes)
+	}
+
+	tsAfter, err := st.GetTimeseries(ctx, filter, "", "")
+	if err != nil || tsAfter.TotalBytes != tsBefore.TotalBytes {
+		t.Fatalf("GetTimeseries mismatch after compact: err=%v before=%d after=%d", err, tsBefore.TotalBytes, tsAfter.TotalBytes)
+	}
+
+	// Backup Export + Import must carry compacted DailyFlows faithfully.
+	arch, err := st.ExportBackup(ctx, "0.2.0")
+	if err != nil {
+		t.Fatalf("ExportBackup: %v", err)
+	}
+	if len(arch.DailyFlows) != 1 || arch.DailyFlows[0].TunBytes != 2500 {
+		t.Fatalf("expected 1 exported DailyFlow with TunBytes=2500, got %+v", arch.DailyFlows)
+	}
+
+	stRestore, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open restore store: %v", err)
+	}
+	defer stRestore.Close()
+	imp, err := stRestore.ImportBackup(ctx, arch, true)
+	if err != nil {
+		t.Fatalf("ImportBackup: %v", err)
+	}
+	if imp.DailyFlowsRows != 1 {
+		t.Fatalf("expected DailyFlowsRows=1 imported, got %+v", imp)
+	}
+	restoredApps, err := stRestore.ListApps(ctx, filter)
+	if err != nil || restoredApps.TotalBytes != appsBefore.TotalBytes {
+		t.Fatalf("restored ListApps mismatch: err=%v got=%d want=%d", err, restoredApps.TotalBytes, appsBefore.TotalBytes)
 	}
 }

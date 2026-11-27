@@ -86,7 +86,7 @@ func StartLocal(parentCtx context.Context, opts Options) (*Instance, error) {
 
 	hub := ws.NewHub(st, cfg.TZOffsetMinutes, cfg.OnlineThresholdSec)
 	go hub.Run(ctx)
-	go st.RunMaintenanceLoop(ctx)
+	go st.RunMaintenanceLoop(ctx, cfg.TZOffsetMinutes)
 
 	srv := api.NewServer(cfg, st, hub, sessionSecret)
 	httpServer := &http.Server{

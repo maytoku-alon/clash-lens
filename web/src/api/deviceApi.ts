@@ -3,6 +3,8 @@ import type {
   CreateDeviceResponse,
   DeviceInfo,
   SettingsPayload,
+  StorageCompactRequest,
+  StorageCompactResponse,
   StoragePruneRequest,
   StoragePruneResponse,
   StorageStatsResponse,
@@ -75,6 +77,14 @@ export const deviceApi = {
   getStorageStats: () => reqJSON<StorageStatsResponse>('/api/v1/storage/stats'),
   pruneStorage: async (payload: StoragePruneRequest) => {
     const res = await reqJSON<StoragePruneResponse>('/api/v1/storage/prune', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    invalidateCache()
+    return res
+  },
+  compactStorage: async (payload: StorageCompactRequest) => {
+    const res = await reqJSON<StorageCompactResponse>('/api/v1/storage/compact', {
       method: 'POST',
       body: JSON.stringify(payload),
     })

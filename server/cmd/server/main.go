@@ -64,7 +64,7 @@ func main() {
 
 	hub := ws.NewHub(st, cfg.TZOffsetMinutes, cfg.OnlineThresholdSec)
 	go hub.Run(ctx)
-	go st.RunMaintenanceLoop(ctx)
+	go st.RunMaintenanceLoop(ctx, cfg.TZOffsetMinutes)
 
 	if cfg.WatchBinary {
 		if exePath, err := os.Executable(); err == nil && filepath.IsAbs(exePath) {

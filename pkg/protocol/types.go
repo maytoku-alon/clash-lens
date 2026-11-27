@@ -171,13 +171,15 @@ type DomainAliasRule struct {
 	Label  string `json:"label"`
 }
 
-// SettingsPayload stores user-configurable quota, multiplier, alias, and burst alert settings.
+// SettingsPayload stores user-configurable quota, multiplier, alias, burst, and tiered retention settings.
 type SettingsPayload struct {
-	MonthlyQuotaGB   float64              `json:"monthly_quota_gb"`
-	ResetDay         int                  `json:"reset_day"`
-	BurstThresholdMB int64                `json:"burst_threshold_mb"`
-	NodeMultipliers  []NodeMultiplierRule `json:"node_multipliers"`
-	DomainAliases    []DomainAliasRule    `json:"domain_aliases"`
+	MonthlyQuotaGB      float64              `json:"monthly_quota_gb"`
+	ResetDay            int                  `json:"reset_day"`
+	BurstThresholdMB    int64                `json:"burst_threshold_mb"`
+	MinuteRetentionDays int                  `json:"minute_retention_days,omitempty"`
+	HourlyRetentionDays int                  `json:"hourly_retention_days,omitempty"`
+	NodeMultipliers     []NodeMultiplierRule `json:"node_multipliers"`
+	DomainAliases       []DomainAliasRule    `json:"domain_aliases"`
 }
 
 // DiagnosticWarning highlights environment traits such as TUN enabled without domain sniffing.
@@ -593,6 +595,24 @@ type BackupDailySummaryRow struct {
 	ConnCount   int64  `json:"conn_count"`
 }
 
+// BackupDailyFlowRow stores one cold archived daily flow row scoped to a device ID.
+type BackupDailyFlowRow struct {
+	DeviceID       string `json:"device_id"`
+	DayDate        string `json:"day_date"`
+	ProcessName    string `json:"process_name"`
+	ProcessDisplay string `json:"process_display"`
+	RootDomain     string `json:"root_domain"`
+	ServiceTag     string `json:"service_tag,omitempty"`
+	EgressNode     string `json:"egress_node"`
+	ProxyGroup     string `json:"proxy_group,omitempty"`
+	RouteType      string `json:"route_type"`
+	Rule           string `json:"rule,omitempty"`
+	UpBytes        int64  `json:"up_bytes"`
+	DownBytes      int64  `json:"down_bytes"`
+	TunBytes       int64  `json:"tun_bytes"`
+	ConnCount      int64  `json:"conn_count"`
+}
+
 // BackupArchive represents a portable, credential-free ClashLens backup for migration or cross-device merge.
 type BackupArchive struct {
 	FormatVersion int                     `json:"format_version"`
@@ -603,6 +623,7 @@ type BackupArchive struct {
 	MinuteTotals  []BackupMinuteTotalRow  `json:"minute_totals"`
 	MinuteFlows   []BackupFlowRow         `json:"minute_flows"`
 	HourlyFlows   []BackupFlowRow         `json:"hourly_flows"`
+	DailyFlows    []BackupDailyFlowRow    `json:"daily_flows,omitempty"`
 	DailySummary  []BackupDailySummaryRow `json:"daily_summary"`
 }
 
@@ -614,29 +635,34 @@ type BackupImportResult struct {
 	MinuteTotalsRows int  `json:"minute_totals_rows"`
 	MinuteFlowsRows  int  `json:"minute_flows_rows"`
 	HourlyFlowsRows  int  `json:"hourly_flows_rows"`
+	DailyFlowsRows   int  `json:"daily_flows_rows,omitempty"`
 	DailySummaryRows int  `json:"daily_summary_rows"`
 	SettingsImported bool `json:"settings_imported"`
 }
 
-// StorageStatsResponse reports database file sizes, row counts, and earliest/latest timestamps.
+// StorageStatsResponse reports database file sizes, row counts, retention config, and earliest/latest timestamps.
 type StorageStatsResponse struct {
-	DBSizeBytes       int64 `json:"db_size_bytes"`
-	WALSizeBytes      int64 `json:"wal_size_bytes"`
-	TotalSizeBytes    int64 `json:"total_size_bytes"`
-	MinuteTotalsRows  int64 `json:"minute_totals_rows"`
-	MinuteFlowsRows   int64 `json:"minute_flows_rows"`
-	HourlyFlowsRows   int64 `json:"hourly_flows_rows"`
-	DailySummaryRows  int64 `json:"daily_summary_rows"`
-	IngestBatchesRows int64 `json:"ingest_batches_rows"`
-	OldestTimestamp   int64 `json:"oldest_timestamp"`
-	NewestTimestamp   int64 `json:"newest_timestamp"`
-	InMemory          bool  `json:"in_memory"`
+	DBSizeBytes         int64 `json:"db_size_bytes"`
+	WALSizeBytes        int64 `json:"wal_size_bytes"`
+	TotalSizeBytes      int64 `json:"total_size_bytes"`
+	MinuteTotalsRows    int64 `json:"minute_totals_rows"`
+	MinuteFlowsRows     int64 `json:"minute_flows_rows"`
+	HourlyFlowsRows     int64 `json:"hourly_flows_rows"`
+	DailyFlowsRows      int64 `json:"daily_flows_rows"`
+	DailySummaryRows    int64 `json:"daily_summary_rows"`
+	IngestBatchesRows   int64 `json:"ingest_batches_rows"`
+	MinuteRetentionDays int   `json:"minute_retention_days"`
+	HourlyRetentionDays int   `json:"hourly_retention_days"`
+	OldestTimestamp     int64 `json:"oldest_timestamp"`
+	NewestTimestamp     int64 `json:"newest_timestamp"`
+	InMemory            bool  `json:"in_memory"`
 }
 
 // StoragePruneRequest requests pruning telemetry older than RetainDays (>= 7).
 type StoragePruneRequest struct {
-	RetainDays int  `json:"retain_days"`
-	Vacuum     bool `json:"vacuum"`
+	RetainDays      int  `json:"retain_days"`
+	Vacuum          bool `json:"vacuum"`
+	PreserveSummary bool `json:"preserve_summary,omitempty"`
 }
 
 // StoragePruneResponse reports rows removed and database size change after pruning.
@@ -652,4 +678,25 @@ type StoragePruneResponse struct {
 	BeforeBytes       int64 `json:"before_bytes"`
 	AfterBytes        int64 `json:"after_bytes"`
 	Vacuumed          bool  `json:"vacuumed"`
+}
+
+// StorageCompactRequest triggers lossless tiered archival of old hourly/minute flows into daily aggregates.
+type StorageCompactRequest struct {
+	MinuteRetainDays int  `json:"minute_retain_days,omitempty"`
+	HourlyRetainDays int  `json:"hourly_retain_days,omitempty"`
+	Vacuum           bool `json:"vacuum"`
+}
+
+// StorageCompactResponse reports archived row counts and reclaimed storage bytes after tiered compaction.
+type StorageCompactResponse struct {
+	OK                  bool  `json:"ok"`
+	MinuteRetainDays    int   `json:"minute_retain_days"`
+	HourlyRetainDays    int   `json:"hourly_retain_days"`
+	PrunedMinuteRows    int64 `json:"pruned_minute_rows"`
+	ArchivedHourlyRows  int64 `json:"archived_hourly_rows"`
+	DailyFlowsUpserted  int64 `json:"daily_flows_upserted"`
+	FoldedTailHourly    int64 `json:"folded_tail_hourly"`
+	BeforeBytes         int64 `json:"before_bytes"`
+	AfterBytes          int64 `json:"after_bytes"`
+	Vacuumed            bool  `json:"vacuumed"`
 }

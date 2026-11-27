@@ -18,6 +18,7 @@ export interface BackupImportResult {
   minute_totals_rows: number
   minute_flows_rows: number
   hourly_flows_rows: number
+  daily_flows_rows?: number
   daily_summary_rows: number
   settings_imported: boolean
 }
@@ -51,8 +52,11 @@ export interface StorageStatsResponse {
   minute_totals_rows: number
   minute_flows_rows: number
   hourly_flows_rows: number
+  daily_flows_rows: number
   daily_summary_rows: number
   ingest_batches_rows: number
+  minute_retention_days: number
+  hourly_retention_days: number
   oldest_timestamp: number
   newest_timestamp: number
   in_memory: boolean
@@ -61,6 +65,7 @@ export interface StorageStatsResponse {
 export interface StoragePruneRequest {
   retain_days: number
   vacuum?: boolean
+  preserve_summary?: boolean
 }
 
 export interface StoragePruneResponse {
@@ -72,6 +77,25 @@ export interface StoragePruneResponse {
   deleted_daily_rows: number
   deleted_batch_rows: number
   total_deleted_rows: number
+  before_bytes: number
+  after_bytes: number
+  vacuumed: boolean
+}
+
+export interface StorageCompactRequest {
+  minute_retain_days?: number
+  hourly_retain_days?: number
+  vacuum?: boolean
+}
+
+export interface StorageCompactResponse {
+  ok: boolean
+  minute_retain_days: number
+  hourly_retain_days: number
+  pruned_minute_rows: number
+  archived_hourly_rows: number
+  daily_flows_upserted: number
+  folded_tail_hourly: number
   before_bytes: number
   after_bytes: number
   vacuumed: boolean
@@ -96,6 +120,8 @@ export interface SettingsPayload {
   monthly_quota_gb: number
   reset_day: number
   burst_threshold_mb: number
+  minute_retention_days?: number
+  hourly_retention_days?: number
   node_multipliers: NodeMultiplierRule[]
   domain_aliases: DomainAliasRule[]
 }
@@ -426,8 +452,11 @@ export interface StorageStatsResponse {
   minute_totals_rows: number
   minute_flows_rows: number
   hourly_flows_rows: number
+  daily_flows_rows: number
   daily_summary_rows: number
   ingest_batches_rows: number
+  minute_retention_days: number
+  hourly_retention_days: number
   oldest_timestamp: number
   newest_timestamp: number
   in_memory: boolean
@@ -436,6 +465,7 @@ export interface StorageStatsResponse {
 export interface StoragePruneRequest {
   retain_days: number
   vacuum?: boolean
+  preserve_summary?: boolean
 }
 
 export interface StoragePruneResponse {
@@ -447,6 +477,25 @@ export interface StoragePruneResponse {
   deleted_daily_rows: number
   deleted_batch_rows: number
   total_deleted_rows: number
+  before_bytes: number
+  after_bytes: number
+  vacuumed: boolean
+}
+
+export interface StorageCompactRequest {
+  minute_retain_days?: number
+  hourly_retain_days?: number
+  vacuum?: boolean
+}
+
+export interface StorageCompactResponse {
+  ok: boolean
+  minute_retain_days: number
+  hourly_retain_days: number
+  pruned_minute_rows: number
+  archived_hourly_rows: number
+  daily_flows_upserted: number
+  folded_tail_hourly: number
   before_bytes: number
   after_bytes: number
   vacuumed: boolean
