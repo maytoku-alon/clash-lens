@@ -3,6 +3,7 @@ import {
   Activity,
   AppWindow,
   ExternalLink,
+  Languages,
   Laptop,
   LayoutDashboard,
   LogOut,
@@ -18,6 +19,7 @@ import {
   Smartphone,
   Sun,
 } from 'lucide-react'
+import { useI18n } from '../i18n/I18nProvider'
 import { useTheme } from '../theme/ThemeProvider'
 import type { DeviceInfo, LiveHubSnapshot, RangePreset, TrafficScope } from '../types/api'
 import { formatSpeed } from '../utils/format'
@@ -45,12 +47,12 @@ interface LayoutShellProps {
   children: ReactNode
 }
 
-const NAV_ITEMS: { key: NavTab; label: string; icon: typeof LayoutDashboard }[] = [
-  { key: 'overview', label: '总览大屏', icon: LayoutDashboard },
-  { key: 'apps', label: '应用 × 网站', icon: AppWindow },
-  { key: 'nodes', label: '节点与套餐', icon: Network },
-  { key: 'live', label: '实时监控', icon: Activity },
-  { key: 'devices', label: '设备与设置', icon: Settings },
+const NAV_ITEMS: { key: NavTab; icon: typeof LayoutDashboard }[] = [
+  { key: 'overview', icon: LayoutDashboard },
+  { key: 'apps', icon: AppWindow },
+  { key: 'nodes', icon: Network },
+  { key: 'live', icon: Activity },
+  { key: 'devices', icon: Settings },
 ]
 
 const PRESETS: RangePreset[] = ['1h', '24h', '7d', '30d', '90d', '1y']
@@ -100,6 +102,7 @@ export function LayoutShell({
   children,
 }: LayoutShellProps) {
   const { isDark, toggleColorMode } = useTheme()
+  const { m, toggleLang } = useI18n()
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readInitialSidebarCollapsed)
   const showAnalyticsBar = activeTab !== 'devices' && activeTab !== 'live'
   const selectedDevice = selectedDeviceId === 'all' ? undefined : devices.find((d) => d.id === selectedDeviceId)
@@ -155,7 +158,7 @@ export function LayoutShell({
                 <div className="min-w-0 overflow-hidden whitespace-nowrap">
                   <div className="text-[15px] font-bold tracking-tight">ClashLens</div>
                   <div className="text-xs text-[var(--cl-text-muted)]">
-                    {localMode ? '本地独立模式' : '流量透视监控'}
+                    {localMode ? m.nav.localMode : m.nav.trafficMonitor}
                   </div>
                 </div>
               )}
@@ -165,13 +168,14 @@ export function LayoutShell({
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon
                 const active = activeTab === item.key
+                const label = m.nav[item.key]
                 return (
                   <button
                     type="button"
                     key={item.key}
                     onClick={() => onTabChange(item.key)}
-                    title={sidebarCollapsed ? item.label : undefined}
-                    aria-label={item.label}
+                    title={sidebarCollapsed ? label : undefined}
+                    aria-label={label}
                     className={`flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg text-[15px] font-medium leading-none tracking-[-0.01em] transition ${
                       sidebarCollapsed ? 'justify-center px-2' : 'justify-start px-3.5'
                     } ${
@@ -189,7 +193,7 @@ export function LayoutShell({
                     }
                   >
                     <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
-                    {!sidebarCollapsed && <span className="truncate whitespace-nowrap">{item.label}</span>}
+                    {!sidebarCollapsed && <span className="truncate whitespace-nowrap">{label}</span>}
                   </button>
                 )
               })}
@@ -201,8 +205,8 @@ export function LayoutShell({
               type="button"
               data-testid="sidebar-toggle"
               onClick={toggleSidebar}
-              title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏（迷你模式）'}
-              aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+              title={sidebarCollapsed ? m.nav.expandSidebar : m.nav.collapseSidebarTitle}
+              aria-label={sidebarCollapsed ? m.nav.expandSidebar : m.nav.collapseSidebar}
               className={`flex h-10 w-full cursor-pointer items-center gap-3 rounded-lg text-[14px] font-medium leading-none tracking-[-0.01em] text-[var(--cl-text-secondary)] transition hover:bg-[var(--cl-bg-surface-hover)] hover:text-[var(--cl-text-primary)] ${
                 sidebarCollapsed ? 'justify-center px-2' : 'justify-start px-3.5'
               }`}
@@ -212,21 +216,21 @@ export function LayoutShell({
               ) : (
                 <PanelLeftClose className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
               )}
-              {!sidebarCollapsed && <span className="truncate whitespace-nowrap">收起侧边栏</span>}
+              {!sidebarCollapsed && <span className="truncate whitespace-nowrap">{m.nav.collapseSidebar}</span>}
             </button>
 
             {!localMode && (
               <button
                 type="button"
                 onClick={onLogout}
-                title={sidebarCollapsed ? '退出登录' : undefined}
-                aria-label="退出登录"
+                title={sidebarCollapsed ? m.nav.logout : undefined}
+                aria-label={m.nav.logout}
                 className={`flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg text-[14.5px] font-medium leading-none tracking-[-0.01em] text-[var(--cl-text-secondary)] transition hover:bg-rose-500/10 hover:text-rose-400 ${
                   sidebarCollapsed ? 'justify-center px-2' : 'justify-start px-3.5'
                 }`}
               >
                 <LogOut className="h-[18px] w-[18px] shrink-0" strokeWidth={1.75} />
-                {!sidebarCollapsed && <span className="truncate whitespace-nowrap">退出登录</span>}
+                {!sidebarCollapsed && <span className="truncate whitespace-nowrap">{m.nav.logout}</span>}
               </button>
             )}
           </div>
@@ -247,7 +251,7 @@ export function LayoutShell({
                     onClick={() => onDeviceChange('all')}
                     className={`cl-pill ${selectedDeviceId === 'all' ? 'cl-pill-active' : ''}`}
                   >
-                    <span>全部设备</span>
+                    <span>{m.topbar.allDevices}</span>
                     <span className="font-mono text-[10px] opacity-75">({devices.length})</span>
                   </button>
 
@@ -296,16 +300,16 @@ export function LayoutShell({
                         borderColor: 'var(--cl-border-focus)',
                         color: 'var(--cl-accent-primary)',
                       }}
-                      title={`打开 ${selectedDevice.name} 的 Clash 控制面板`}
+                      title={m.topbar.openDashboardTitle(selectedDevice.name)}
                     >
-                      <span>管理面板</span>
+                      <span>{m.topbar.adminPanel}</span>
                       <ExternalLink className="h-3 w-3" strokeWidth={1.6} />
                     </a>
                   )}
                 </>
               ) : (
                 <div className="text-[13px] font-semibold tracking-tight">
-                  {activeTab === 'live' ? '多端实时监控流' : '设备接入与系统设置'}
+                  {activeTab === 'live' ? m.topbar.liveStreamTitle : m.topbar.devicesSettingsTitle}
                 </div>
               )}
             </div>
@@ -318,9 +322,9 @@ export function LayoutShell({
                   <div className="cl-segment">
                     {(
                       [
-                        { k: 'all', l: '全部出口' },
-                        { k: 'proxy', l: '仅代理' },
-                        { k: 'direct', l: '仅直连' },
+                        { k: 'all', l: m.topbar.scopeAll },
+                        { k: 'proxy', l: m.topbar.scopeProxy },
+                        { k: 'direct', l: m.topbar.scopeDirect },
                       ] as const
                     ).map((s) => (
                       <button
@@ -342,7 +346,7 @@ export function LayoutShell({
                       className="cl-btn-accent font-mono text-[11px]"
                     >
                       <span>{customDay}</span>
-                      <span className="text-[10px] opacity-80">× 清除</span>
+                      <span className="text-[10px] opacity-80">{m.topbar.clearCustomDay}</span>
                     </button>
                   ) : (
                     <div className="cl-segment">
@@ -373,7 +377,7 @@ export function LayoutShell({
                   borderColor: 'var(--cl-border-subtle)',
                   backgroundColor: 'var(--cl-bg-sidebar)',
                 }}
-                title="查看实时流量监控"
+                title={m.topbar.viewLiveTitle}
               >
                 <span
                   className="h-1.5 w-1.5 shrink-0 rounded-full animate-pulse"
@@ -394,13 +398,24 @@ export function LayoutShell({
                 </span>
               </button>
 
+              <button
+                type="button"
+                data-testid="lang-toggle"
+                onClick={toggleLang}
+                className="cl-btn-secondary !h-7 !px-2 !text-[11px]"
+                title={m.topbar.toggleLangTitle}
+              >
+                <Languages className="h-3.5 w-3.5" strokeWidth={1.6} />
+                <span className="font-mono font-semibold">{m.topbar.langShort}</span>
+              </button>
+
               <AppearancePopover />
 
               <button
                 type="button"
                 onClick={toggleColorMode}
                 className="cl-icon-btn"
-                title={isDark ? '切换浅色模式' : '切换深色模式'}
+                title={isDark ? m.topbar.switchToLight : m.topbar.switchToDark}
               >
                 {isDark ? <Sun className="h-3.5 w-3.5" strokeWidth={1.6} /> : <Moon className="h-3.5 w-3.5" strokeWidth={1.6} />}
               </button>
@@ -409,7 +424,7 @@ export function LayoutShell({
                 type="button"
                 onClick={onToggleKiosk}
                 className="cl-icon-btn"
-                title={kiosk ? '退出全屏大屏模式' : '全屏大屏展示'}
+                title={kiosk ? m.topbar.exitKiosk : m.topbar.enterKiosk}
               >
                 {kiosk ? (
                   <Minimize2 className="h-3.5 w-3.5" strokeWidth={1.6} />

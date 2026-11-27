@@ -3,6 +3,7 @@ import { authApi } from './api/authApi'
 import { deviceApi } from './api/deviceApi'
 import { trafficApi } from './api/trafficApi'
 import { LayoutShell, type NavTab } from './components/LayoutShell'
+import { useI18n } from './i18n/I18nProvider'
 import { AppsExplorerPage } from './pages/AppsExplorerPage'
 import { AuthGate } from './pages/AuthGate'
 import { DevicesSettingsPage } from './pages/DevicesSettingsPage'
@@ -19,6 +20,7 @@ import type {
 import { dayDateToRange, presetToRange } from './utils/format'
 
 export function App() {
+  const { m, ensureCatalogLoaded } = useI18n()
   const [auth, setAuth] = useState<AuthStatusResponse | null>(null)
   const [activeTab, setActiveTab] = useState<NavTab>('overview')
   const [devices, setDevices] = useState<DeviceInfo[]>([])
@@ -71,13 +73,14 @@ export function App() {
   // Refresh devices and clock periodically while authenticated
   useEffect(() => {
     if (!auth?.authenticated) return
+    ensureCatalogLoaded()
     void loadDevices(false)
     const timer = setInterval(() => {
       setTickNow(Math.floor(Date.now() / 1000))
       void loadDevices(true)
     }, 30000)
     return () => clearInterval(timer)
-  }, [auth?.authenticated, loadDevices])
+  }, [auth?.authenticated, ensureCatalogLoaded, loadDevices])
 
   // WebSocket live connection with automatic reconnect
   useEffect(() => {
@@ -163,7 +166,7 @@ export function App() {
         className="flex min-h-screen items-center justify-center text-xs"
         style={{ backgroundColor: 'var(--cl-bg-page)', color: 'var(--cl-text-muted)' }}
       >
-        正在加载 ClashLens...
+        {m.common.loadingApp}
       </div>
     )
   }

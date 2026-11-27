@@ -4,6 +4,7 @@ import { AlertCircle, ArrowRight, Gauge, Network, Plus, ShieldCheck } from 'luci
 import type { QueryParams } from '../api/trafficApi'
 import { EChartBox } from '../components/EChartBox'
 import { useNodesData } from '../hooks/useDashboardQueries'
+import { useI18n } from '../i18n/I18nProvider'
 import { buildByteValueAxis, buildChartTheme } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
 import { formatBytes, formatNumber } from '../utils/format'
@@ -21,6 +22,7 @@ export function NodesQuotaPage({
   onOpenApp,
 }: NodesQuotaPageProps) {
   const { theme, tokens, colorMode, privacyMode } = useTheme()
+  const { m, resolveServiceTag, resolveProcessName } = useI18n()
   const chartTheme = useMemo(
     () => buildChartTheme(tokens, colorMode, theme.chartEffects),
     [tokens, colorMode, theme.chartEffects],
@@ -46,9 +48,9 @@ export function NodesQuotaPage({
     )
     const colorMap: Record<string, string> = chartTheme.routeColors
     const labelMap: Record<string, string> = {
-      PROXY: '代理 (PROXY)',
-      DIRECT: '直连 (DIRECT)',
-      REJECT: '拦截 (REJECT)',
+      PROXY: m.nodes.routeProxy,
+      DIRECT: m.nodes.routeDirect,
+      REJECT: m.nodes.routeReject,
     }
     return {
       tooltip: {
@@ -82,7 +84,7 @@ export function NodesQuotaPage({
         },
       ],
     }
-  }, [data, chartTheme])
+  }, [data, chartTheme, m])
 
   const nodesBarOption = useMemo<echarts.EChartsCoreOption>(() => {
     const topNodes = (data?.nodes ?? []).slice(0, 10).reverse()
@@ -115,7 +117,7 @@ export function NodesQuotaPage({
       },
       series: [
         {
-          name: '实际消耗',
+          name: m.nodes.actualBytes,
           type: 'bar',
           data: topNodes.map((n) => n.raw_bytes),
           itemStyle: {
@@ -124,7 +126,7 @@ export function NodesQuotaPage({
           },
         },
         {
-          name: '倍率计费',
+          name: m.nodes.billedBytes,
           type: 'bar',
           data: topNodes.map((n) => n.billed_bytes),
           itemStyle: {
@@ -134,7 +136,7 @@ export function NodesQuotaPage({
         },
       ],
     }
-  }, [data, chartTheme])
+  }, [data, chartTheme, m])
 
   const quota = data?.quota
   const dailyAvgEstimate = useMemo(() => {
@@ -149,10 +151,8 @@ export function NodesQuotaPage({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-base font-bold tracking-tight">节点、规则与套餐计费</h1>
-          <p className="text-xs text-[var(--cl-text-muted)]">
-            按节点倍率折算等效套餐消耗，并核查走代理的大流量条目是否被规则误分流
-          </p>
+          <h1 className="text-base font-bold tracking-tight">{m.nodes.title}</h1>
+          <p className="text-xs text-[var(--cl-text-muted)]">{m.nodes.subtitle}</p>
         </div>
         <button
           type="button"
@@ -160,7 +160,7 @@ export function NodesQuotaPage({
           className="cl-btn-secondary"
         >
           <Gauge className="h-3.5 w-3.5" style={{ color: 'var(--cl-accent-primary)' }} />
-          配置套餐与节点倍率
+          {m.nodes.configQuotaBtn}
         </button>
       </div>
 
@@ -170,7 +170,7 @@ export function NodesQuotaPage({
         <div className="cl-card flex flex-col justify-between rounded-xl p-4 lg:col-span-4">
           <div>
             <div className="flex items-center justify-between text-xs text-[var(--cl-text-muted)]">
-              <span>机场账单周期估算</span>
+              <span>{m.nodes.quotaCycleTitle}</span>
               <span className="font-mono">
                 {quota ? `${quota.cycle_start_label} ~ ${quota.cycle_end_label}` : '-'}
               </span>
@@ -189,7 +189,7 @@ export function NodesQuotaPage({
               )}
             </div>
             <div className="mt-1 font-mono text-xs text-[var(--cl-text-muted)] tabular-nums">
-              实际代理流量: {formatBytes(quota?.raw_proxy_bytes)}
+              {m.nodes.actualProxyTraffic(formatBytes(quota?.raw_proxy_bytes))}
             </div>
           </div>
 
@@ -209,8 +209,8 @@ export function NodesQuotaPage({
                 />
               </div>
               <div className="flex justify-between font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
-                <span>已用 {quota.used_percent.toFixed(1)}% · 日均 {formatBytes(dailyAvgEstimate)}</span>
-                <span>预计本周期 {quota.projected_gb.toFixed(1)} GB · 剩 {quota.days_remaining} 天</span>
+                <span>{m.nodes.quotaUsedSummary(quota.used_percent, formatBytes(dailyAvgEstimate))}</span>
+                <span>{m.nodes.quotaProjectedSummary(quota.projected_gb, quota.days_remaining)}</span>
               </div>
             </div>
           ) : (
@@ -221,11 +221,11 @@ export function NodesQuotaPage({
                 backgroundColor: 'var(--cl-bg-sidebar)',
               }}
             >
-              <span>暂未设定月度套餐配额。配置后可实时监控配额余量、周期日均与节点倍率折算。</span>
+              <span>{m.nodes.quotaNotConfigured}</span>
               <div>
                 <button type="button" onClick={onOpenSettings} className="cl-btn-primary !h-7 !px-2.5 !text-[11px]">
                   <Plus className="h-3 w-3" />
-                  立即配置套餐
+                  {m.nodes.configQuotaNow}
                 </button>
               </div>
             </div>
@@ -234,11 +234,11 @@ export function NodesQuotaPage({
 
         {/* Route Donut */}
         <div className="cl-card rounded-xl p-4 lg:col-span-3">
-          <div className="mb-1 text-xs font-semibold">代理 / 直连 / 拦截占比</div>
+          <div className="mb-1 text-xs font-semibold">{m.nodes.routeDonutTitle}</div>
           <div className="relative h-[220px] w-full">
             <EChartBox option={donutOption} className="h-[220px] w-full" />
             <div className="pointer-events-none absolute inset-x-0 top-[26%] flex flex-col items-center justify-center text-center">
-              <span className="text-[10px] text-[var(--cl-text-muted)]">代理占比</span>
+              <span className="text-[10px] text-[var(--cl-text-muted)]">{m.nodes.proxyRatioLabel}</span>
               <span
                 className="font-mono text-lg font-bold leading-tight tabular-nums"
                 style={{ color: chartTheme.routeColors.PROXY }}
@@ -246,7 +246,7 @@ export function NodesQuotaPage({
                 {routeSummary.proxyPct.toFixed(1)}%
               </span>
               <span className="font-mono text-[10px] text-[var(--cl-text-muted)] tabular-nums">
-                共 {formatBytes(routeSummary.total, 1)}
+                {m.nodes.totalShort(formatBytes(routeSummary.total, 1))}
               </span>
             </div>
           </div>
@@ -254,7 +254,7 @@ export function NodesQuotaPage({
 
         {/* Nodes Bar */}
         <div className="cl-card rounded-xl p-4 lg:col-span-5">
-          <div className="mb-1 text-xs font-semibold">Top 出口节点流量对比</div>
+          <div className="mb-1 text-xs font-semibold">{m.nodes.topNodesTitle}</div>
           <EChartBox option={nodesBarOption} className="h-[220px] w-full" />
         </div>
       </div>
@@ -269,73 +269,76 @@ export function NodesQuotaPage({
           >
             <div className="flex items-center gap-2">
               <AlertCircle className="h-4 w-4" style={{ color: 'var(--cl-status-warning)' }} />
-              <h3 className="text-sm font-semibold">规则误分流体检（Proxy Audit）</h3>
+              <h3 className="text-sm font-semibold">{m.nodes.proxyAuditTitle}</h3>
             </div>
-            <span className="text-[11px] text-[var(--cl-text-muted)]">代理消耗最高的流向条目</span>
+            <span className="text-[11px] text-[var(--cl-text-muted)]">{m.nodes.proxyAuditSubtitle}</span>
           </div>
           <div className="cl-thin-scroll h-[460px] divide-y divide-[var(--cl-border-subtle)] overflow-y-auto">
             {!data || data.proxy_audit.length === 0 ? (
               <div className="flex h-full items-center justify-center text-xs text-[var(--cl-text-muted)]">
-                当前范围无代理流量记录
+                {m.nodes.noProxyFlows}
               </div>
             ) : (
-              data.proxy_audit.map((item, idx) => (
-                <button
-                  type="button"
-                  key={`${item.process_display}-${item.root_domain}-${item.egress_node}-${idx}`}
-                  onClick={() => onOpenApp(item.process_display)}
-                  className="flex min-h-[58px] w-full cursor-pointer items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-[var(--cl-bg-surface-hover)]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex h-5 items-center gap-1.5 text-xs">
-                      <span className="shrink-0 font-semibold">{item.process_display}</span>
-                      <ArrowRight className="h-3 w-3 shrink-0 text-[var(--cl-text-muted)]" />
-                      <span
-                        className="truncate font-mono"
-                        style={{ color: 'var(--cl-accent-primary)' }}
-                      >
-                        {maskHostOrDomain(item.root_domain, privacyMode)}
-                      </span>
-                      {item.service_tag && (
+              data.proxy_audit.map((item, idx) => {
+                const tag = resolveServiceTag(item.service_tag, item.root_domain)
+                return (
+                  <button
+                    type="button"
+                    key={`${item.process_display}-${item.root_domain}-${item.egress_node}-${idx}`}
+                    onClick={() => onOpenApp(item.process_display)}
+                    className="flex min-h-[58px] w-full cursor-pointer items-center justify-between gap-3 px-4 py-2.5 text-left transition hover:bg-[var(--cl-bg-surface-hover)]"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex h-5 items-center gap-1.5 text-xs">
+                        <span className="shrink-0 font-semibold">{resolveProcessName(item.process_display)}</span>
+                        <ArrowRight className="h-3 w-3 shrink-0 text-[var(--cl-text-muted)]" />
                         <span
-                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none text-[var(--cl-text-muted)]"
-                          style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
+                          className="truncate font-mono"
+                          style={{ color: 'var(--cl-accent-primary)' }}
                         >
-                          {item.service_tag}
+                          {maskHostOrDomain(item.root_domain, privacyMode)}
                         </span>
-                      )}
-                      {isMatchFallbackRule(item.rule) && (
-                        <span
-                          className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] leading-none"
-                          style={{
-                            backgroundColor: 'rgba(245, 158, 11, 0.14)',
-                            color: 'var(--cl-status-warning)',
-                          }}
-                        >
-                          兜底
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[10px] text-[var(--cl-text-muted)]">
-                      <span>节点: {item.egress_node}</span>
-                      <span>· 规则: {maskRuleText(item.rule || '-', privacyMode)}</span>
-                      {item.inbound_mode === 'TUN' && (
-                        <span style={{ color: 'var(--cl-accent-primary)' }}>· TUN</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right font-mono tabular-nums">
-                    <div className="text-xs font-bold" style={{ color: chartTheme.metricColors.billed }}>
-                      {formatBytes(item.billed_bytes)}
-                    </div>
-                    {item.billed_bytes !== item.total_bytes && (
-                      <div className="text-[10px] text-[var(--cl-text-muted)]">
-                        实际 {formatBytes(item.total_bytes)}
+                        {tag && (
+                          <span
+                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] leading-none text-[var(--cl-text-muted)]"
+                            style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
+                          >
+                            {tag}
+                          </span>
+                        )}
+                        {isMatchFallbackRule(item.rule) && (
+                          <span
+                            className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] leading-none"
+                            style={{
+                              backgroundColor: 'rgba(245, 158, 11, 0.14)',
+                              color: 'var(--cl-status-warning)',
+                            }}
+                          >
+                            {m.common.fallbackBadge}
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </button>
-              ))
+                      <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[10px] text-[var(--cl-text-muted)]">
+                        <span>{m.nodes.nodePrefix(item.egress_node)}</span>
+                        <span>· {m.nodes.rulePrefix(maskRuleText(item.rule || '-', privacyMode))}</span>
+                        {item.inbound_mode === 'TUN' && (
+                          <span style={{ color: 'var(--cl-accent-primary)' }}>· TUN</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right font-mono tabular-nums">
+                      <div className="text-xs font-bold" style={{ color: chartTheme.metricColors.billed }}>
+                        {formatBytes(item.billed_bytes)}
+                      </div>
+                      {item.billed_bytes !== item.total_bytes && (
+                        <div className="text-[10px] text-[var(--cl-text-muted)]">
+                          {m.nodes.actualShort(formatBytes(item.total_bytes))}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                )
+              })
             )}
           </div>
         </div>
@@ -348,7 +351,7 @@ export function NodesQuotaPage({
           >
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4" style={{ color: 'var(--cl-status-success)' }} />
-              <h3 className="text-sm font-semibold">规则命中排行</h3>
+              <h3 className="text-sm font-semibold">{m.nodes.rulesRankTitle}</h3>
             </div>
             <Network className="h-4 w-4 text-[var(--cl-text-muted)]" />
           </div>
@@ -359,17 +362,17 @@ export function NodesQuotaPage({
                 style={{ borderColor: 'var(--cl-border-subtle)' }}
               >
                 <tr>
-                  <th className="px-4 py-2 font-medium">规则</th>
-                  <th className="px-4 py-2 font-medium">策略</th>
-                  <th className="px-4 py-2 text-right font-medium">流量</th>
-                  <th className="px-4 py-2 text-right font-medium">连接数</th>
+                  <th className="px-4 py-2 font-medium">{m.nodes.colRule}</th>
+                  <th className="px-4 py-2 font-medium">{m.nodes.colPolicy}</th>
+                  <th className="px-4 py-2 text-right font-medium">{m.nodes.colTraffic}</th>
+                  <th className="px-4 py-2 text-right font-medium">{m.nodes.colConns}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--cl-border-subtle)]">
                 {!data || data.rules.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="py-10 text-center text-[var(--cl-text-muted)]">
-                      暂无规则命中记录
+                      {m.nodes.noRuleHits}
                     </td>
                   </tr>
                 ) : (
@@ -388,7 +391,7 @@ export function NodesQuotaPage({
                                   color: 'var(--cl-status-warning)',
                                 }}
                               >
-                                兜底
+                                {m.common.fallbackBadge}
                               </span>
                             )}
                           </div>

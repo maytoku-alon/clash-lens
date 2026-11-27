@@ -1,3 +1,4 @@
+import type { Language } from '../i18n/types'
 import type { RangePreset } from '../types/api'
 
 export function formatBytes(bytes: number | undefined | null, decimals = 2): string {
@@ -31,16 +32,23 @@ export function formatTimeBucket(unixSec: number, interval: 'minute' | 'hour' | 
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-export function formatFullTime(unixSec: number): string {
-  if (!unixSec) return '从未'
+export function formatFullTime(unixSec: number, lang: Language = 'zh'): string {
+  if (!unixSec) return lang === 'en' ? 'Never' : '从未'
   const d = new Date(unixSec * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-export function formatRelativeTime(unixSec: number): string {
-  if (!unixSec) return '从未上报'
+export function formatRelativeTime(unixSec: number, lang: Language = 'zh'): string {
+  if (!unixSec) return lang === 'en' ? 'Never reported' : '从未上报'
   const diff = Math.max(0, Math.floor(Date.now() / 1000) - unixSec)
+  if (lang === 'en') {
+    if (diff < 10) return 'just now'
+    if (diff < 60) return `${diff}s ago`
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+    return `${Math.floor(diff / 86400)}d ago`
+  }
   if (diff < 10) return '刚刚'
   if (diff < 60) return `${diff} 秒前`
   if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { authApi } from '../api/authApi'
 import { deviceApi } from '../api/deviceApi'
+import { useI18n } from '../i18n/I18nProvider'
 import { useTheme } from '../theme/ThemeProvider'
 import type {
   DeviceInfo,
@@ -47,6 +48,7 @@ export function DevicesSettingsPage({
   localMode = false,
 }: DevicesSettingsPageProps) {
   const { privacyMode, togglePrivacyMode } = useTheme()
+  const { lang, m } = useI18n()
   const [subTab, setSubTab] = useState<'devices' | 'settings'>(initialSubTab)
 
   // Add device form
@@ -191,7 +193,7 @@ export function DevicesSettingsPage({
       setNewDashboardURL('')
       onDevicesChanged()
     } catch (err) {
-      setDeviceFormErr(err instanceof Error ? err.message : '创建设备失败')
+      setDeviceFormErr(err instanceof Error ? err.message : m.devices.createDeviceErr)
     } finally {
       setCreating(false)
     }
@@ -206,7 +208,7 @@ export function DevicesSettingsPage({
   }
 
   const handleDelete = async (d: DeviceInfo) => {
-    if (!window.confirm(`确定删除设备「${d.name}」及其全部历史流量数据吗？`)) return
+    if (!window.confirm(m.devices.confirmDeleteDevice(d.name))) return
     await deviceApi.delete(d.id)
     onDevicesChanged()
   }
@@ -218,9 +220,9 @@ export function DevicesSettingsPage({
     try {
       const saved = await deviceApi.saveSettings(settings)
       setSettings(saved)
-      setSettingsNotice('设置已保存并立即生效')
+      setSettingsNotice(m.devices.settingsSaved)
     } catch (err) {
-      setSettingsNotice(err instanceof Error ? err.message : '保存失败')
+      setSettingsNotice(err instanceof Error ? err.message : m.devices.settingsSaveFailed)
     } finally {
       setSavingSettings(false)
     }
@@ -233,9 +235,9 @@ export function DevicesSettingsPage({
       await authApi.changePassword(oldPwd, newPwd)
       setOldPwd('')
       setNewPwd('')
-      setPwdMsg('管理员密码修改成功')
+      setPwdMsg(m.devices.passwordUpdated)
     } catch (err) {
-      setPwdMsg(err instanceof Error ? err.message : '修改失败')
+      setPwdMsg(err instanceof Error ? err.message : m.devices.passwordUpdateFailed)
     }
   }
 
@@ -249,7 +251,13 @@ export function DevicesSettingsPage({
       const res = await deviceApi.importBackup(file, mergeSettings)
       setBackupNotice({
         ok: true,
-        text: `合并成功：新增设备 ${res.devices_imported} 台、已有设备 ${res.devices_existing} 台、导入分钟统计 ${res.minute_totals_rows} 条、明细 ${res.minute_flows_rows + res.hourly_flows_rows} 条${res.settings_imported ? '（已同步套餐设置）' : ''}。`,
+        text: m.devices.importSuccess(
+          res.devices_imported,
+          res.devices_existing,
+          res.minute_totals_rows,
+          res.minute_flows_rows + res.hourly_flows_rows + (res.daily_flows_rows ?? 0),
+          res.settings_imported,
+        ),
       })
       onDevicesChanged()
       void loadStorageStats()
@@ -259,7 +267,7 @@ export function DevicesSettingsPage({
     } catch (err) {
       setBackupNotice({
         ok: false,
-        text: err instanceof Error ? err.message : '导入失败',
+        text: err instanceof Error ? err.message : m.devices.importFailed,
       })
     } finally {
       setImportingBackup(false)
@@ -279,7 +287,13 @@ export function DevicesSettingsPage({
       })
       setCompactNotice({
         ok: true,
-        text: `无损归档完成：已清理 ${res.pruned_minute_rows} 条过期分钟明细，将 ${res.archived_hourly_rows} 条小时明细按天归档（生成 ${res.daily_flows_upserted} 条冷层日记录），占用 ${formatBytes(res.before_bytes)} → ${formatBytes(res.after_bytes)}。`,
+        text: m.devices.compactSuccess(
+          res.pruned_minute_rows,
+          res.archived_hourly_rows,
+          res.daily_flows_upserted,
+          formatBytes(res.before_bytes),
+          formatBytes(res.after_bytes),
+        ),
         detail: res,
       })
       onDevicesChanged()
@@ -287,7 +301,7 @@ export function DevicesSettingsPage({
     } catch (err) {
       setCompactNotice({
         ok: false,
-        text: err instanceof Error ? err.message : '归档失败',
+        text: err instanceof Error ? err.message : m.devices.compactFailed,
       })
     } finally {
       setCompacting(false)
@@ -306,7 +320,11 @@ export function DevicesSettingsPage({
       })
       setPruneNotice({
         ok: true,
-        text: `已清理 ${res.total_deleted_rows} 条过期记录（空间 ${formatBytes(res.before_bytes)} → ${formatBytes(res.after_bytes)}）。`,
+        text: m.devices.pruneSuccess(
+          res.total_deleted_rows,
+          formatBytes(res.before_bytes),
+          formatBytes(res.after_bytes),
+        ),
         detail: res,
       })
       setConfirmPruneOpen(false)
@@ -315,7 +333,7 @@ export function DevicesSettingsPage({
     } catch (err) {
       setPruneNotice({
         ok: false,
-        text: err instanceof Error ? err.message : '清理失败',
+        text: err instanceof Error ? err.message : m.devices.pruneFailed,
       })
       setConfirmPruneOpen(false)
     } finally {
@@ -348,7 +366,7 @@ export function DevicesSettingsPage({
             className={`cl-segment-item ${subTab === 'devices' ? 'cl-segment-item-active' : ''}`}
             style={subTab === 'devices' ? { color: 'var(--cl-accent-primary)' } : undefined}
           >
-            设备接入管理 ({devices.length})
+            {m.devices.subTabDevices(devices.length)}
           </button>
           <button
             type="button"
@@ -356,7 +374,7 @@ export function DevicesSettingsPage({
             className={`cl-segment-item ${subTab === 'settings' ? 'cl-segment-item-active' : ''}`}
             style={subTab === 'settings' ? { color: 'var(--cl-accent-primary)' } : undefined}
           >
-            套餐倍率 · 别名 · 安全
+            {m.devices.subTabSettings}
           </button>
         </div>
       </div>
@@ -365,23 +383,21 @@ export function DevicesSettingsPage({
         <div className="space-y-4">
           {/* Create Device Form */}
           <form onSubmit={handleCreateDevice} className="cl-card rounded-xl p-4">
-            <h2 className="text-sm font-semibold tracking-tight">添加监控设备</h2>
-            <p className="mt-0.5 text-xs text-[var(--cl-text-muted)]">
-              为每台电脑、笔记本或服务器签发独立 Device Token，多端流量汇总展示；可选填写该主机原生 Clash 控制面板链接以快速跳转。
-            </p>
+            <h2 className="text-sm font-semibold tracking-tight">{m.devices.addDeviceTitle}</h2>
+            <p className="mt-0.5 text-xs text-[var(--cl-text-muted)]">{m.devices.addDeviceDesc}</p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <input
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="设备名称（如：主力台式机、轻薄笔记本、Linux 服务器）"
+                placeholder={m.devices.deviceNamePlaceholder}
                 className="cl-input min-w-[200px] flex-1"
               />
               <input
                 type="url"
                 value={newDashboardURL}
                 onChange={(e) => setNewDashboardURL(e.target.value)}
-                placeholder="可选：Clash 面板 URL (http://...)"
+                placeholder={m.devices.dashboardUrlPlaceholder}
                 className="cl-input min-w-[200px] flex-1 font-mono"
               />
               <select
@@ -389,10 +405,10 @@ export function DevicesSettingsPage({
                 onChange={(e) => setNewOS(e.target.value)}
                 className="cl-input"
               >
-                <option value="windows">Windows (Clash Verge Rev)</option>
-                <option value="laptop">Windows 笔记本</option>
+                <option value="windows">{m.devices.osDesktop}</option>
+                <option value="laptop">{m.devices.osLaptop}</option>
                 <option value="darwin">macOS</option>
-                <option value="linux">Linux 服务器 / 软路由</option>
+                <option value="linux">{m.devices.osLinux}</option>
                 <option value="android">Android (Clash For Android)</option>
               </select>
               <button
@@ -401,7 +417,7 @@ export function DevicesSettingsPage({
                 className="cl-btn-primary !h-8"
               >
                 <Plus className="h-3.5 w-3.5" />
-                生成设备 Token
+                {m.devices.createTokenBtn}
               </button>
             </div>
             {deviceFormErr && (
@@ -423,10 +439,10 @@ export function DevicesSettingsPage({
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold" style={{ color: 'var(--cl-accent-primary)' }}>
-                    设备「{mintedToken.name}」创建成功（Token 仅展示这一次）
+                    {m.devices.tokenMintedTitle(mintedToken.name)}
                   </div>
                   <p className="mt-0.5 text-xs text-[var(--cl-text-muted)]">
-                    请复制以下 `agent.yaml` 配置到本机 `%APPDATA%\ClashLens\agent.yaml`（或与 `clashlens-agent.exe` 同目录）。
+                    {m.devices.tokenMintedHint}
                   </p>
                 </div>
                 <button
@@ -452,10 +468,10 @@ export function DevicesSettingsPage({
                       type="button"
                       onClick={() => setRevealMintedToken((v) => !v)}
                       className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
-                      title={revealMintedToken ? '隐藏明文 Token' : '显示明文 Token'}
+                      title={revealMintedToken ? m.devices.hideTokenTitle : m.devices.showTokenTitle}
                     >
                       {revealMintedToken ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                      {revealMintedToken ? '隐藏' : '显示'}
+                      {revealMintedToken ? m.devices.hideToken : m.devices.showToken}
                     </button>
                     <button
                       type="button"
@@ -463,7 +479,7 @@ export function DevicesSettingsPage({
                       className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
                     >
                       <Download className="h-3 w-3" />
-                      下载
+                      {m.devices.download}
                     </button>
                     <button
                       type="button"
@@ -475,7 +491,11 @@ export function DevicesSettingsPage({
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
-                      {copiedKey === 'yaml' ? '已复制' : copiedKey === 'yaml:err' ? '复制失败' : '复制 agent.yaml'}
+                      {copiedKey === 'yaml'
+                        ? m.common.copied
+                        : copiedKey === 'yaml:err'
+                          ? m.common.copyFailed
+                          : m.devices.copyYaml}
                     </button>
                   </div>
                 </div>
@@ -501,7 +521,11 @@ export function DevicesSettingsPage({
                     }
                     className="cl-btn-secondary !h-6 shrink-0 !px-2 !text-[11px]"
                   >
-                    {copiedKey === 'cmd' ? '已复制命令' : copiedKey === 'cmd:err' ? '复制失败' : '复制启动命令'}
+                    {copiedKey === 'cmd'
+                      ? m.devices.copiedCmd
+                      : copiedKey === 'cmd:err'
+                        ? m.common.copyFailed
+                        : m.devices.copyCmd}
                   </button>
                 </div>
               </div>
@@ -514,12 +538,12 @@ export function DevicesSettingsPage({
               className="border-b px-4 py-3"
               style={{ borderColor: 'var(--cl-border-subtle)' }}
             >
-              <h3 className="text-sm font-semibold">已注册设备列表</h3>
+              <h3 className="text-sm font-semibold">{m.devices.registeredDevicesTitle}</h3>
             </div>
             <div className="divide-y divide-[var(--cl-border-subtle)]">
               {devices.length === 0 ? (
                 <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">
-                  尚未添加任何设备，请在上方创建首个设备 Token
+                  {m.devices.noDevicesYet}
                 </div>
               ) : (
                 devices.map((d) => {
@@ -527,10 +551,10 @@ export function DevicesSettingsPage({
                   const starterTemplate = buildStarterCommand(d.os, `<YOUR_TOKEN_${d.token_prefix}>`)
                   const diagAlerts: string[] = []
                   if (d.tun_enabled && !d.sniffer_enabled) {
-                    diagAlerts.push('TUN 已开启但域名嗅探 (Sniffer) 未开启，部分连接可能仅显示 IP')
+                    diagAlerts.push(m.devices.diagTunNoSniffer)
                   }
                   if (!d.online && d.last_seen_at > 0) {
-                    diagAlerts.push(`心跳已离线（最后上报 ${formatRelativeTime(d.last_seen_at)}），请确认采集端正在运行`)
+                    diagAlerts.push(m.devices.diagOffline(formatRelativeTime(d.last_seen_at, lang)))
                   }
                   return (
                     <div key={d.id} className="px-4 py-3">
@@ -549,28 +573,28 @@ export function DevicesSettingsPage({
                                   value={editingName}
                                   onChange={(e) => setEditingName(e.target.value)}
                                   className="cl-input !h-6 !px-2 text-xs"
-                                  placeholder="设备名称"
+                                  placeholder={m.devices.deviceNameShort}
                                 />
                                 <input
                                   type="url"
                                   value={editingDashboardURL}
                                   onChange={(e) => setEditingDashboardURL(e.target.value)}
                                   className="cl-input !h-6 min-w-[200px] !px-2 font-mono text-xs"
-                                  placeholder="Clash 面板 URL（可选）"
+                                  placeholder={m.devices.dashboardUrlShort}
                                 />
                                 <button
                                   type="button"
                                   onClick={() => handleRename(d)}
                                   className="cl-btn-primary !h-6 !px-2 !text-[11px]"
                                 >
-                                  保存
+                                  {m.common.save}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setEditingId('')}
                                   className="text-[11px] text-[var(--cl-text-muted)]"
                                 >
-                                  取消
+                                  {m.common.cancel}
                                 </button>
                               </div>
                             ) : (
@@ -583,7 +607,7 @@ export function DevicesSettingsPage({
                                 }}
                                 className="cursor-pointer text-sm font-semibold hover:underline"
                                 style={{ color: 'var(--cl-text-primary)' }}
-                                title="点击编辑设备名称与面板链接"
+                                title={m.devices.editDeviceTitle}
                               >
                                 {d.name}
                               </button>
@@ -615,46 +639,46 @@ export function DevicesSettingsPage({
                                   backgroundColor: 'var(--cl-accent-soft)',
                                   color: 'var(--cl-accent-primary)',
                                 }}
-                                title={`打开 ${d.name} 的 Clash 控制面板`}
+                                title={m.devices.openPanelTitle(d.name)}
                               >
-                                管理面板
+                                {m.devices.adminPanel}
                                 <ExternalLink className="h-2.5 w-2.5" />
                               </a>
                             )}
                           </div>
                           <div className="flex flex-wrap gap-3 font-mono text-[11px] text-[var(--cl-text-muted)]">
                             <span>Token: {d.token_prefix}••••••••</span>
-                            <span>内核: {d.mihomo_version || '-'}</span>
-                            <span>Sniffer: {d.sniffer_enabled ? '开启' : '关闭'}</span>
-                            <span>最后心跳: {formatRelativeTime(d.last_seen_at)}</span>
+                            <span>{m.devices.coreLabel(d.mihomo_version || '-')}</span>
+                            <span>{m.devices.snifferLabel(d.sniffer_enabled)}</span>
+                            <span>{m.devices.lastHeartbeatLabel(formatRelativeTime(d.last_seen_at, lang))}</span>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2.5">
                           <div className="mr-1 text-right font-mono tabular-nums">
                             <div className="text-xs font-semibold" style={{ color: 'var(--cl-accent-primary)' }}>
-                              今日 {formatBytes(d.today_bytes)}
+                              {m.devices.todayTotal(formatBytes(d.today_bytes))}
                             </div>
                             <div className="text-[10px] text-[var(--cl-text-muted)]">
-                              代理 {formatBytes(d.today_proxy_bytes)}
+                              {m.devices.todayProxy(formatBytes(d.today_proxy_bytes))}
                             </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => setExpandedCmdId(cmdOpen ? '' : d.id)}
                             className="cl-btn-secondary !h-7 !px-2 !text-[11px]"
-                            title="展开一键启动命令模板"
+                            title={m.devices.toggleCmdTitle}
                           >
                             {cmdOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                             <Terminal className="h-3 w-3" />
-                            启动命令
+                            {m.devices.startCmdBtn}
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDelete(d)}
                             className="rounded-lg border p-1.5 text-[var(--cl-text-muted)] transition hover:border-rose-500/40 hover:text-rose-400"
                             style={{ borderColor: 'var(--cl-border-subtle)' }}
-                            title="删除设备"
+                            title={m.devices.deleteDeviceTitle}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -671,7 +695,7 @@ export function DevicesSettingsPage({
                           }}
                         >
                           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                          <span>{diagAlerts.join('；')}</span>
+                          <span>{diagAlerts.join(lang === 'en' ? '; ' : '；')}</span>
                         </div>
                       )}
 
@@ -685,8 +709,9 @@ export function DevicesSettingsPage({
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2 text-[var(--cl-text-muted)]">
                             <span>
-                              服务端仅存储 Token 哈希不保存明文；请将下方占位符替换为创建时保存的密钥（前缀{' '}
-                              <code className="font-mono text-[var(--cl-text-primary)]">{d.token_prefix}</code>）：
+                              {m.devices.tokenHashNoticePrefix}
+                              <code className="font-mono text-[var(--cl-text-primary)]">{d.token_prefix}</code>
+                              {lang === 'en' ? '):' : '）：'}
                             </span>
                             <button
                               type="button"
@@ -698,7 +723,7 @@ export function DevicesSettingsPage({
                               ) : (
                                 <Copy className="h-3 w-3" />
                               )}
-                              {copiedKey === `cmd:${d.id}` ? '已复制模板' : '复制命令模板'}
+                              {copiedKey === `cmd:${d.id}` ? m.devices.copiedTemplate : m.devices.copyCmdTemplate}
                             </button>
                           </div>
                           <div
@@ -724,11 +749,11 @@ export function DevicesSettingsPage({
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Quota & Multipliers & Aliases */}
           <form onSubmit={handleSaveSettings} className="cl-card space-y-4 rounded-xl p-4 sm:p-5">
-            <h2 className="text-sm font-semibold">机场套餐、节点倍率与域名别名</h2>
+            <h2 className="text-sm font-semibold">{m.devices.settingsTitle}</h2>
 
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
-                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">月度套餐总量 (GB, 0=不限)</label>
+                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">{m.devices.quotaGbLabel}</label>
                 <input
                   type="number"
                   step="1"
@@ -741,7 +766,7 @@ export function DevicesSettingsPage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">月度重置日 (1-28)</label>
+                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">{m.devices.resetDayLabel}</label>
                 <input
                   type="number"
                   min="1"
@@ -754,7 +779,7 @@ export function DevicesSettingsPage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">突发告警阈值 (MB)</label>
+                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">{m.devices.burstMbLabel}</label>
                 <input
                   type="number"
                   min="10"
@@ -769,24 +794,24 @@ export function DevicesSettingsPage({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">分钟明细热层保留 (天)</label>
+                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">{m.devices.minuteRetentionLabel}</label>
                 <select
                   value={settings.minute_retention_days ?? 7}
                   onChange={(e) => {
-                    const m = Number(e.target.value) || 7
-                    const h = Math.max(m, settings.hourly_retention_days ?? 30)
-                    setSettings({ ...settings, minute_retention_days: m, hourly_retention_days: h })
+                    const minDays = Number(e.target.value) || 7
+                    const h = Math.max(minDays, settings.hourly_retention_days ?? 30)
+                    setSettings({ ...settings, minute_retention_days: minDays, hourly_retention_days: h })
                   }}
                   className="cl-input w-full font-mono"
                 >
-                  <option value={3}>3 天（极简占用）</option>
-                  <option value={7}>7 天（默认推荐）</option>
-                  <option value={14}>14 天</option>
-                  <option value={30}>30 天</option>
+                  <option value={3}>{m.devices.minuteRetention3}</option>
+                  <option value={7}>{m.devices.minuteRetention7}</option>
+                  <option value={14}>{m.common.daysSuffix(14)}</option>
+                  <option value={30}>{m.common.daysSuffix(30)}</option>
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">小时明细温层保留（超期自动按天归档）</label>
+                <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">{m.devices.hourlyRetentionLabel}</label>
                 <select
                   value={settings.hourly_retention_days ?? 30}
                   onChange={(e) =>
@@ -794,11 +819,11 @@ export function DevicesSettingsPage({
                   }
                   className="cl-input w-full font-mono"
                 >
-                  <option value={14}>14 天</option>
-                  <option value={30}>30 天（默认推荐）</option>
-                  <option value={60}>60 天</option>
-                  <option value={90}>90 天</option>
-                  <option value={180}>180 天</option>
+                  <option value={14}>{m.common.daysSuffix(14)}</option>
+                  <option value={30}>{m.devices.hourlyRetention30}</option>
+                  <option value={60}>{m.common.daysSuffix(60)}</option>
+                  <option value={90}>{m.common.daysSuffix(90)}</option>
+                  <option value={180}>{m.common.daysSuffix(180)}</option>
                 </select>
               </div>
             </div>
@@ -806,7 +831,7 @@ export function DevicesSettingsPage({
             {/* Multipliers */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-medium">节点倍率规则（支持关键字或 * 通配符）</label>
+                <label className="text-xs font-medium">{m.devices.multiplierRulesLabel}</label>
                 <button
                   type="button"
                   onClick={() =>
@@ -818,7 +843,7 @@ export function DevicesSettingsPage({
                   className="cursor-pointer text-xs hover:underline"
                   style={{ color: 'var(--cl-accent-primary)' }}
                 >
-                  + 添加规则
+                  {m.devices.addRuleBtn}
                 </button>
               </div>
               <div className="space-y-2">
@@ -831,7 +856,7 @@ export function DevicesSettingsPage({
                         next[idx] = { ...next[idx], pattern: e.target.value }
                         setSettings({ ...settings, node_multipliers: next })
                       }}
-                      placeholder="节点关键词如 HK-IPLC 或 *2x*"
+                      placeholder={m.devices.nodePatternPlaceholder}
                       className="cl-input flex-1 font-mono"
                     />
                     <input
@@ -866,7 +891,7 @@ export function DevicesSettingsPage({
             {/* Domain Aliases */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-medium">自定义域名中文别名</label>
+                <label className="text-xs font-medium">{m.devices.customDomainAliasLabel}</label>
                 <button
                   type="button"
                   onClick={() =>
@@ -878,7 +903,7 @@ export function DevicesSettingsPage({
                   className="cursor-pointer text-xs hover:underline"
                   style={{ color: 'var(--cl-accent-primary)' }}
                 >
-                  + 添加别名
+                  {m.devices.addAliasBtn}
                 </button>
               </div>
               <div className="space-y-2">
@@ -891,7 +916,7 @@ export function DevicesSettingsPage({
                         next[idx] = { ...next[idx], domain: e.target.value }
                         setSettings({ ...settings, domain_aliases: next })
                       }}
-                      placeholder="主域名如 cdn.example.com"
+                      placeholder={m.devices.domainPlaceholder}
                       className="cl-input flex-1 font-mono"
                     />
                     <input
@@ -901,7 +926,7 @@ export function DevicesSettingsPage({
                         next[idx] = { ...next[idx], label: e.target.value }
                         setSettings({ ...settings, domain_aliases: next })
                       }}
-                      placeholder="显示名称"
+                      placeholder={m.devices.aliasPlaceholder}
                       className="cl-input flex-1"
                     />
                     <button
@@ -933,7 +958,7 @@ export function DevicesSettingsPage({
               className="cl-btn-primary !h-8"
             >
               <Save className="h-3.5 w-3.5" />
-              {savingSettings ? '保存中...' : '保存配置'}
+              {savingSettings ? m.devices.savingSettings : m.devices.saveSettings}
             </button>
           </form>
 
@@ -942,11 +967,9 @@ export function DevicesSettingsPage({
             <div className="cl-card space-y-3 rounded-xl p-4 sm:p-5">
               <div className="flex items-center gap-2">
                 <Database className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
-                <h2 className="text-sm font-semibold">数据备份与迁移（本地 / 跨机合并）</h2>
+                <h2 className="text-sm font-semibold">{m.devices.backupTitle}</h2>
               </div>
-              <p className="text-xs leading-relaxed text-[var(--cl-text-muted)]">
-                导出 <code className="font-mono">.json.gz</code> 完整流量备份（不含管理员密码与设备 Token）；导入时按设备与时间桶幂等合并，可安全用于换机迁移或多台本地设备数据汇总，不会重复累计。
-              </p>
+              <p className="text-xs leading-relaxed text-[var(--cl-text-muted)]">{m.devices.backupDesc}</p>
 
               <label className="flex cursor-pointer items-center gap-2 text-xs text-[var(--cl-text-muted)]">
                 <input
@@ -956,7 +979,7 @@ export function DevicesSettingsPage({
                   className="h-3.5 w-3.5 rounded"
                   style={{ accentColor: 'var(--cl-accent-primary)' }}
                 />
-                <span>导入时同时覆盖套餐倍率与域名别名设置</span>
+                <span>{m.devices.importOverwriteSettings}</span>
               </label>
 
               <input
@@ -974,7 +997,7 @@ export function DevicesSettingsPage({
                   className="cl-btn-secondary !h-8"
                 >
                   <Download className="h-3.5 w-3.5" />
-                  导出备份 (.json.gz)
+                  {m.devices.exportBackupBtn}
                 </a>
                 <button
                   type="button"
@@ -983,7 +1006,7 @@ export function DevicesSettingsPage({
                   className="cl-btn-primary !h-8"
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  {importingBackup ? '导入合并中...' : '导入并合并备份'}
+                  {importingBackup ? m.devices.importingBackup : m.devices.importBackupBtn}
                 </button>
               </div>
 
@@ -1002,10 +1025,8 @@ export function DevicesSettingsPage({
               <div className="flex items-start gap-2.5">
                 <Shield className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--cl-accent-primary)' }} />
                 <div>
-                  <h2 className="text-sm font-semibold">全局隐私脱敏模式（演示模式）</h2>
-                  <p className="mt-0.5 text-xs text-[var(--cl-text-muted)]">
-                    开启后所有表格、列表、KPI 副标题、桑基图及图表 Tooltip 中的域名与 IP 将自动打码（不影响复制真实规则），配置持久化保存于浏览器本地。
-                  </p>
+                  <h2 className="text-sm font-semibold">{m.devices.privacyTitle}</h2>
+                  <p className="mt-0.5 text-xs text-[var(--cl-text-muted)]">{m.devices.privacyDesc}</p>
                 </div>
               </div>
               <button
@@ -1014,7 +1035,7 @@ export function DevicesSettingsPage({
                 className={privacyMode ? 'cl-btn-accent !h-8 shrink-0' : 'cl-btn-secondary !h-8 shrink-0'}
               >
                 {privacyMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                {privacyMode ? '已开启脱敏' : '开启脱敏'}
+                {privacyMode ? m.devices.privacyEnabledBtn : m.devices.privacyEnableBtn}
               </button>
             </div>
 
@@ -1023,7 +1044,7 @@ export function DevicesSettingsPage({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <HardDrive className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
-                  <h2 className="text-sm font-semibold">数据库冷热分级存储与维护</h2>
+                  <h2 className="text-sm font-semibold">{m.devices.storageTitle}</h2>
                 </div>
                 <button
                   type="button"
@@ -1031,7 +1052,7 @@ export function DevicesSettingsPage({
                   disabled={storageLoading}
                   className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
                 >
-                  {storageLoading ? '统计中...' : '刷新体积'}
+                  {storageLoading ? m.devices.refreshingStats : m.devices.refreshStats}
                 </button>
               </div>
 
@@ -1041,41 +1062,49 @@ export function DevicesSettingsPage({
                     className="rounded-lg border p-2.5"
                     style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
                   >
-                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">数据库总占用</div>
+                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">{m.devices.storageTotalSize}</div>
                     <div className="mt-1 text-sm font-bold tabular-nums" style={{ color: 'var(--cl-accent-primary)' }}>
                       {formatBytes(storageStats.total_size_bytes)}
                     </div>
                     <div className="mt-0.5 text-[10px] text-[var(--cl-text-muted)] tabular-nums">
-                      主库 {formatBytes(storageStats.db_size_bytes)} · WAL {formatBytes(storageStats.wal_size_bytes)}
+                      {m.devices.storageDbDetail(formatBytes(storageStats.db_size_bytes), formatBytes(storageStats.wal_size_bytes))}
                     </div>
                   </div>
                   <div
                     className="rounded-lg border p-2.5"
                     style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
                   >
-                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">分级记录数</div>
+                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">{m.devices.storageRowCount}</div>
                     <div className="mt-1 text-sm font-bold tabular-nums">
-                      {storageStats.minute_flows_rows + storageStats.hourly_flows_rows + storageStats.daily_flows_rows} 行
+                      {m.devices.storageRowsUnit(
+                        storageStats.minute_flows_rows + storageStats.hourly_flows_rows + storageStats.daily_flows_rows,
+                      )}
                     </div>
                     <div className="mt-0.5 text-[10px] text-[var(--cl-text-muted)] tabular-nums">
-                      分钟 {storageStats.minute_flows_rows} · 小时 {storageStats.hourly_flows_rows} · 日归档 {storageStats.daily_flows_rows}
+                      {m.devices.storageTierDetail(
+                        storageStats.minute_flows_rows,
+                        storageStats.hourly_flows_rows,
+                        storageStats.daily_flows_rows,
+                      )}
                     </div>
                   </div>
                   <div
                     className="rounded-lg border p-2.5 col-span-2 sm:col-span-1"
                     style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
                   >
-                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">数据时间跨度</div>
+                    <div className="font-sans text-[11px] text-[var(--cl-text-muted)]">{m.devices.storageTimeSpan}</div>
                     <div className="mt-1 truncate text-[11px] font-semibold tabular-nums">
-                      {storageStats.oldest_timestamp > 0 ? formatFullTime(storageStats.oldest_timestamp).slice(0, 10) : '-'}
+                      {storageStats.oldest_timestamp > 0 ? formatFullTime(storageStats.oldest_timestamp, lang).slice(0, 10) : '-'}
                     </div>
                     <div className="mt-0.5 truncate text-[10px] text-[var(--cl-text-muted)] tabular-nums">
-                      至 {storageStats.newest_timestamp > 0 ? formatFullTime(storageStats.newest_timestamp).slice(0, 10) : '-'}
+                      {m.devices.storageToDate(
+                        storageStats.newest_timestamp > 0 ? formatFullTime(storageStats.newest_timestamp, lang).slice(0, 10) : '-',
+                      )}
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="text-xs text-[var(--cl-text-muted)]">正在获取存储占用...</div>
+                <div className="text-xs text-[var(--cl-text-muted)]">{m.devices.storageLoading}</div>
               )}
 
               <div
@@ -1083,8 +1112,7 @@ export function DevicesSettingsPage({
                 style={{ borderColor: 'var(--cl-border-subtle)', backgroundColor: 'var(--cl-bg-sidebar)' }}
               >
                 <div className="min-w-0 flex-1 text-[11px] text-[var(--cl-text-muted)]">
-                  将超过 <span className="font-mono font-semibold text-[var(--cl-text-primary)]">{settings.minute_retention_days ?? 7}</span> 天的分钟明细与超过{' '}
-                  <span className="font-mono font-semibold text-[var(--cl-text-primary)]">{settings.hourly_retention_days ?? 30}</span> 天的小时明细无损合并为按天归档（保留 365 天热力图与应用/域名/节点排行）。
+                  {m.devices.compactDesc(settings.minute_retention_days ?? 7, settings.hourly_retention_days ?? 30)}
                 </div>
                 <button
                   type="button"
@@ -1094,7 +1122,7 @@ export function DevicesSettingsPage({
                   className="cl-btn-accent !h-7 shrink-0"
                 >
                   <Archive className="h-3 w-3" />
-                  {compacting ? '归档压缩中...' : '立即无损归档压缩'}
+                  {compacting ? m.devices.compacting : m.devices.compactNowBtn}
                 </button>
               </div>
 
@@ -1110,18 +1138,18 @@ export function DevicesSettingsPage({
 
               <div className="flex flex-wrap items-center gap-2.5 border-t pt-2.5" style={{ borderColor: 'var(--cl-border-subtle)' }}>
                 <label className="flex items-center gap-1.5 text-xs text-[var(--cl-text-muted)]">
-                  <span>仅保留最近</span>
+                  <span>{m.devices.retainRecentPrefix}</span>
                   <select
                     value={retainDays}
                     onChange={(e) => setRetainDays(Math.max(7, Number(e.target.value) || 30))}
                     className="cl-input !h-7 px-2 font-mono text-xs"
                   >
-                    <option value={7}>7 天</option>
-                    <option value={14}>14 天</option>
-                    <option value={30}>30 天</option>
-                    <option value={90}>90 天</option>
-                    <option value={180}>180 天</option>
-                    <option value={365}>365 天</option>
+                    <option value={7}>{m.common.daysSuffix(7)}</option>
+                    <option value={14}>{m.common.daysSuffix(14)}</option>
+                    <option value={30}>{m.common.daysSuffix(30)}</option>
+                    <option value={90}>{m.common.daysSuffix(90)}</option>
+                    <option value={180}>{m.common.daysSuffix(180)}</option>
+                    <option value={365}>{m.common.daysSuffix(365)}</option>
                   </select>
                 </label>
 
@@ -1133,7 +1161,7 @@ export function DevicesSettingsPage({
                     className="h-3.5 w-3.5 rounded"
                     style={{ accentColor: 'var(--cl-accent-primary)' }}
                   />
-                  <span>保留 365 天热力图与按天汇总</span>
+                  <span>{m.devices.preserveSummaryLabel}</span>
                 </label>
 
                 <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--cl-text-muted)]">
@@ -1144,7 +1172,7 @@ export function DevicesSettingsPage({
                     className="h-3.5 w-3.5 rounded"
                     style={{ accentColor: 'var(--cl-accent-primary)' }}
                   />
-                  <span>VACUUM 收缩磁盘</span>
+                  <span>{m.devices.vacuumLabel}</span>
                 </label>
 
                 <button
@@ -1154,7 +1182,7 @@ export function DevicesSettingsPage({
                   className="cl-btn-secondary !h-7 hover:border-rose-500/40 hover:text-rose-400"
                 >
                   <Trash2 className="h-3 w-3" />
-                  清理过期数据
+                  {m.devices.pruneExpiredBtn}
                 </button>
               </div>
 
@@ -1173,10 +1201,10 @@ export function DevicesSettingsPage({
               <form onSubmit={handleChangePwd} className="cl-card h-fit space-y-3 rounded-xl p-4 sm:p-5">
                 <div className="flex items-center gap-2">
                   <KeyRound className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
-                  <h2 className="text-sm font-semibold">修改管理员登录密码</h2>
+                  <h2 className="text-sm font-semibold">{m.devices.passwordTitle}</h2>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">原密码</label>
+                  <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">{m.devices.oldPasswordLabel}</label>
                   <input
                     type="password"
                     value={oldPwd}
@@ -1185,7 +1213,7 @@ export function DevicesSettingsPage({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">新密码</label>
+                  <label className="mb-1 block text-xs text-[var(--cl-text-muted)]">{m.devices.newPasswordLabel}</label>
                   <input
                     type="password"
                     value={newPwd}
@@ -1202,7 +1230,7 @@ export function DevicesSettingsPage({
                   type="submit"
                   className="cl-btn-secondary !h-8"
                 >
-                  更新密码
+                  {m.devices.updatePasswordBtn}
                 </button>
               </form>
             )}
@@ -1217,11 +1245,9 @@ export function DevicesSettingsPage({
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: 'var(--cl-status-warning)' }} />
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold">确认清理过期历史流量数据？</h3>
+                <h3 className="text-sm font-semibold">{m.devices.pruneConfirmTitle}</h3>
                 <p className="text-xs leading-relaxed text-[var(--cl-text-muted)]">
-                  即将永久删除 <span className="font-mono font-semibold text-[var(--cl-text-primary)]">{retainDays}</span> 天前的分钟级与小时级明细记录
-                  {preserveSummary ? '（保留 365 天热力图与按天归档汇总）' : '，并一并清除每日汇总与按天归档记录'}
-                  {pruneVacuum ? '，清理后执行 WAL 截断与 VACUUM 空间压缩' : '，并执行 WAL 截断'}。建议操作前先导出 `.json.gz` 备份。
+                  {m.devices.pruneConfirmDesc(retainDays, preserveSummary, pruneVacuum)}
                 </p>
               </div>
             </div>
@@ -1232,7 +1258,7 @@ export function DevicesSettingsPage({
                 onClick={() => setConfirmPruneOpen(false)}
                 className="cl-btn-secondary !h-8"
               >
-                取消
+                {m.common.cancel}
               </button>
               <button
                 type="button"
@@ -1240,7 +1266,7 @@ export function DevicesSettingsPage({
                 onClick={() => void handleConfirmPrune()}
                 className="cl-btn-primary !h-8"
               >
-                {pruning ? '清理中...' : '确认永久清理'}
+                {pruning ? m.devices.pruning : m.devices.confirmPruneBtn}
               </button>
             </div>
           </div>

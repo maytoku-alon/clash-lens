@@ -7,6 +7,7 @@ import { EChartBox } from '../components/EChartBox'
 import { TrafficHeatmap } from '../components/TrafficHeatmap'
 import { TrafficStackChart } from '../components/TrafficStackChart'
 import { useOverviewData } from '../hooks/useDashboardQueries'
+import { useI18n } from '../i18n/I18nProvider'
 import { buildChartTheme } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
 import type { GroupByDim, LiveHubSnapshot } from '../types/api'
@@ -48,6 +49,7 @@ export function OverviewPage({
   onOpenDomain,
 }: OverviewPageProps) {
   const { theme, tokens, colorMode, privacyMode } = useTheme()
+  const { lang, m, resolveServiceTag, resolveProcessName, translateWarning } = useI18n()
   const chartTheme = useMemo(
     () => buildChartTheme(tokens, colorMode, theme.chartEffects),
     [tokens, colorMode, theme.chartEffects],
@@ -124,6 +126,7 @@ export function OverviewPage({
       {/* Diagnostic Warnings (e.g. TUN without Sniffer) */}
       {visibleWarnings.map((w) => {
         const key = warningKey(w)
+        const tr = translateWarning(w)
         return (
           <div
             key={key}
@@ -138,8 +141,8 @@ export function OverviewPage({
             <div className="flex min-w-0 items-start gap-3">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <div className="min-w-0">
-                <div className="font-semibold">{w.title}</div>
-                <div className="mt-0.5 opacity-90">{w.message}</div>
+                <div className="font-semibold">{tr.title}</div>
+                <div className="mt-0.5 opacity-90">{tr.message}</div>
               </div>
             </div>
             <button
@@ -147,8 +150,8 @@ export function OverviewPage({
               data-testid="dismiss-warning-btn"
               onClick={() => dismissWarning(key)}
               className="shrink-0 cursor-pointer rounded-md p-1 opacity-70 transition hover:bg-black/10 hover:opacity-100"
-              title="关闭此异常提示（若其他设备出现异常将自动提醒；设备页始终保留诊断信息）"
-              aria-label={`关闭 ${w.device_name || w.title} 异常提示`}
+              title={m.overview.dismissWarningTitle}
+              aria-label={m.overview.dismissWarningAria(w.device_name || tr.title)}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -163,7 +166,7 @@ export function OverviewPage({
           {/* Card 1: Today Traffic */}
           <div className="cl-card rounded-xl p-4">
             <div className="flex items-center justify-between text-xs text-[var(--cl-text-muted)]">
-              <span>今日流量</span>
+              <span>{m.overview.todayTraffic}</span>
               {overview && overview.yesterday_bytes > 0 && (
                 <span
                   className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-mono text-[11px] font-medium tabular-nums"
@@ -177,7 +180,7 @@ export function OverviewPage({
                   ) : (
                     <ArrowDownRight className="h-3 w-3" />
                   )}
-                  {Math.abs(overview.today_delta_pct).toFixed(1)}% vs 昨日
+                  {m.overview.vsYesterday(Math.abs(overview.today_delta_pct))}
                 </span>
               )}
             </div>
@@ -186,8 +189,8 @@ export function OverviewPage({
             </div>
             <div className="mt-3">
               <div className="mb-1 flex justify-between font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
-                <span>代理 {formatBytes(overview?.today_proxy_bytes)}</span>
-                <span>直连 {formatBytes(overview?.today_direct_bytes)}</span>
+                <span>{m.overview.proxyShort(formatBytes(overview?.today_proxy_bytes))}</span>
+                <span>{m.overview.directShort(formatBytes(overview?.today_direct_bytes))}</span>
               </div>
               <div
                 className="h-1.5 w-full overflow-hidden rounded-full"
@@ -204,9 +207,9 @@ export function OverviewPage({
           {/* Card 2: Month & Quota */}
           <div className="cl-card rounded-xl p-4">
             <div className="flex items-center justify-between text-xs text-[var(--cl-text-muted)]">
-              <span>本月累计 / 配额进度</span>
+              <span>{m.overview.monthAndQuota}</span>
               <span className="font-mono text-[11px] tabular-nums">
-                在线 {overview?.online_devices ?? 0}/{overview?.total_devices ?? 0} 设备
+                {m.overview.onlineDevices(overview?.online_devices ?? 0, overview?.total_devices ?? 0)}
               </span>
             </div>
             <div className="mt-2 font-mono text-2xl font-bold tracking-tight tabular-nums">
@@ -216,7 +219,7 @@ export function OverviewPage({
               <div className="mt-3">
                 <div className="mb-1 flex justify-between font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
                   <span>
-                    计费 {formatBytes(overview.quota.billed_bytes)} / {overview.quota.monthly_quota_gb} GB
+                    {m.overview.billedProgress(formatBytes(overview.quota.billed_bytes), overview.quota.monthly_quota_gb)}
                   </span>
                   <span
                     style={{
@@ -243,8 +246,8 @@ export function OverviewPage({
               </div>
             ) : (
               <div className="mt-3 flex items-center justify-between font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
-                <span>所选时段 {formatBytes(overview?.range_bytes)}</span>
-                <span>历史总计 {formatBytes(overview?.all_time_bytes)}</span>
+                <span>{m.overview.selectedRange(formatBytes(overview?.range_bytes))}</span>
+                <span>{m.overview.allTimeTotal(formatBytes(overview?.all_time_bytes))}</span>
               </div>
             )}
           </div>
@@ -252,9 +255,9 @@ export function OverviewPage({
           {/* Card 3: Live Speed + Sparkline */}
           <div className="cl-card rounded-xl p-4">
             <div className="flex items-center justify-between text-xs text-[var(--cl-text-muted)]">
-              <span>实时总速率</span>
+              <span>{m.overview.liveTotalSpeed}</span>
               <span className="font-mono text-[11px] tabular-nums" style={{ color: 'var(--cl-accent-primary)' }}>
-                {live?.active_conns ?? 0} 活跃连接
+                {m.overview.activeConnsLabel(live?.active_conns ?? 0)}
               </span>
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2 font-mono tabular-nums">
@@ -287,14 +290,14 @@ export function OverviewPage({
             className="cl-card group flex cursor-pointer flex-col justify-between rounded-xl p-4 text-left transition hover:border-[var(--cl-border-focus)]"
           >
             <div className="flex w-full items-center justify-between text-xs text-[var(--cl-text-muted)]">
-              <span>当前时段头号消耗源</span>
+              <span>{m.overview.topConsumerTitle}</span>
               <Flame className="h-3.5 w-3.5" style={{ color: 'var(--cl-status-warning)' }} />
             </div>
             {overview?.top_consumer ? (
               <>
                 <div className="mt-2 flex items-baseline justify-between gap-2">
                   <span className="truncate text-lg font-bold tracking-tight">
-                    {overview.top_consumer.process_display}
+                    {resolveProcessName(overview.top_consumer.process_display)}
                   </span>
                   <span
                     className="shrink-0 font-mono text-base font-bold tabular-nums"
@@ -306,16 +309,22 @@ export function OverviewPage({
                 <div className="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--cl-text-muted)]">
                   <span className="truncate font-mono">
                     {maskHostOrDomain(overview.top_consumer.root_domain, privacyMode)}
-                    {overview.top_consumer.service_tag ? ` · ${overview.top_consumer.service_tag}` : ''}
+                    {(() => {
+                      const tag = resolveServiceTag(
+                        overview.top_consumer.service_tag,
+                        overview.top_consumer.root_domain,
+                      )
+                      return tag ? ` · ${tag}` : ''
+                    })()}
                   </span>
                   <span className="shrink-0 text-[11px]" style={{ color: 'var(--cl-accent-primary)' }}>
-                    点击深挖 →
+                    {m.overview.drillDown}
                   </span>
                 </div>
               </>
             ) : (
               <div className="mt-4 text-xs text-[var(--cl-text-muted)]">
-                {loading ? '正在统计...' : '该时段暂无消耗数据'}
+                {loading ? m.overview.calculating : m.overview.noRangeData}
               </div>
             )}
           </button>
@@ -343,70 +352,73 @@ export function OverviewPage({
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap className="h-4 w-4" style={{ color: 'var(--cl-status-warning)' }} />
-              <h2 className="text-sm font-semibold tracking-tight">突发高耗事件（Top Bursts）</h2>
+              <h2 className="text-sm font-semibold tracking-tight">{m.overview.burstsTitle}</h2>
             </div>
-            <span className="text-xs text-[var(--cl-text-muted)]">快速定位暴涨时段</span>
+            <span className="text-xs text-[var(--cl-text-muted)]">{m.overview.burstsSubtitle}</span>
           </div>
 
           {!bursts || bursts.items.length === 0 ? (
             <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">
-              该时间范围暂无明显流量明细
+              {m.overview.burstsEmpty}
             </div>
           ) : (
             <div className="cl-list-stack cl-thin-scroll cl-bursts-scroll min-h-0 flex-1 space-y-2">
-              {bursts.items.map((b, idx) => (
-                <button
-                  type="button"
-                  key={`${b.bucket_ts}-${b.process_display}-${b.root_domain}-${idx}`}
-                  onClick={() => onOpenApp(b.process_display)}
-                  className="cl-list-item flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold">{b.process_display}</span>
-                      <span className="text-[11px] text-[var(--cl-text-muted)]">→</span>
-                      <span
-                        className="truncate font-mono text-xs"
-                        style={{ color: 'var(--cl-accent-primary)' }}
-                      >
-                        {maskHostOrDomain(b.root_domain, privacyMode)}
-                      </span>
-                      {b.service_tag && (
+              {bursts.items.map((b, idx) => {
+                const tag = resolveServiceTag(b.service_tag, b.root_domain)
+                return (
+                  <button
+                    type="button"
+                    key={`${b.bucket_ts}-${b.process_display}-${b.root_domain}-${idx}`}
+                    onClick={() => onOpenApp(b.process_display)}
+                    className="cl-list-item flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold">{resolveProcessName(b.process_display)}</span>
+                        <span className="text-[11px] text-[var(--cl-text-muted)]">→</span>
                         <span
-                          className="hidden rounded px-1.5 py-0.5 text-[10px] text-[var(--cl-text-muted)] sm:inline"
-                          style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
+                          className="truncate font-mono text-xs"
+                          style={{ color: 'var(--cl-accent-primary)' }}
                         >
-                          {b.service_tag}
+                          {maskHostOrDomain(b.root_domain, privacyMode)}
                         </span>
-                      )}
+                        {tag && (
+                          <span
+                            className="hidden rounded px-1.5 py-0.5 text-[10px] text-[var(--cl-text-muted)] sm:inline"
+                            style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
+                          >
+                            {tag}
+                          </span>
+                        )}
+                      </div>
+                      <div className="cl-burst-meta mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
+                        <span>{formatFullTime(b.bucket_ts, lang)}</span>
+                        <span>· {b.device_name}</span>
+                        <span>· {b.route_type === 'DIRECT' ? 'DIRECT' : b.egress_node}</span>
+                        {b.inbound_mode === 'TUN' && (
+                          <span
+                            className="rounded px-1 text-[10px]"
+                            style={{
+                              backgroundColor: 'var(--cl-accent-soft)',
+                              color: 'var(--cl-accent-primary)',
+                            }}
+                          >
+                            TUN
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="cl-burst-meta mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
-                      <span>{formatFullTime(b.bucket_ts)}</span>
-                      <span>· {b.device_name}</span>
-                      <span>· {b.route_type === 'DIRECT' ? 'DIRECT' : b.egress_node}</span>
-                      {b.inbound_mode === 'TUN' && (
-                        <span
-                          className="rounded px-1 text-[10px]"
-                          style={{
-                            backgroundColor: 'var(--cl-accent-soft)',
-                            color: 'var(--cl-accent-primary)',
-                          }}
-                        >
-                          TUN
-                        </span>
-                      )}
+                    <div className="shrink-0 text-right font-mono tabular-nums">
+                      <div className="text-xs font-bold" style={{ color: 'var(--cl-status-warning)' }}>
+                        {formatBytes(b.total_bytes)}
+                      </div>
+                      <div className="text-[10px] text-[var(--cl-text-muted)]">
+                        ↓{formatBytes(b.down_bytes, 1)}
+                      </div>
                     </div>
-                  </div>
-                  <div className="shrink-0 text-right font-mono tabular-nums">
-                    <div className="text-xs font-bold" style={{ color: 'var(--cl-status-warning)' }}>
-                      {formatBytes(b.total_bytes)}
-                    </div>
-                    <div className="text-[10px] text-[var(--cl-text-muted)]">
-                      ↓{formatBytes(b.down_bytes, 1)}
-                    </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
@@ -420,7 +432,7 @@ export function OverviewPage({
               ) : (
                 <Globe className="h-4 w-4" style={{ color: 'var(--cl-status-success)' }} />
               )}
-              <h2 className="text-sm font-semibold tracking-tight">消耗排行榜</h2>
+              <h2 className="text-sm font-semibold tracking-tight">{m.overview.rankingTitle}</h2>
             </div>
 
             <div className="cl-segment">
@@ -430,7 +442,7 @@ export function OverviewPage({
                 className={`cl-segment-item ${rankTab === 'apps' ? 'cl-segment-item-active' : ''}`}
                 style={rankTab === 'apps' ? { color: 'var(--cl-accent-primary)' } : undefined}
               >
-                Top 应用
+                {m.overview.topAppsTab}
               </button>
               <button
                 type="button"
@@ -438,14 +450,14 @@ export function OverviewPage({
                 className={`cl-segment-item ${rankTab === 'domains' ? 'cl-segment-item-active' : ''}`}
                 style={rankTab === 'domains' ? { color: 'var(--cl-accent-primary)' } : undefined}
               >
-                Top 网站
+                {m.overview.topDomainsTab}
               </button>
             </div>
           </div>
 
           {rankTab === 'apps' ? (
             !apps || apps.items.length === 0 ? (
-              <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">暂无应用排行数据</div>
+              <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">{m.overview.noAppsRank}</div>
             ) : (
               <div className="cl-list-stack space-y-2.5">
                 {apps.items.map((app) => (
@@ -457,7 +469,7 @@ export function OverviewPage({
                   >
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate font-semibold">{app.process_display}</span>
+                        <span className="truncate font-semibold">{resolveProcessName(app.process_display)}</span>
                         <span className="truncate font-mono text-[11px] text-[var(--cl-text-muted)]">
                           {app.top_domains.map((d) => maskHostOrDomain(d.root_domain, privacyMode)).join(' · ')}
                         </span>
@@ -491,59 +503,62 @@ export function OverviewPage({
               </div>
             )
           ) : !domains || domains.items.length === 0 ? (
-            <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">暂无网站排行数据</div>
+            <div className="py-10 text-center text-xs text-[var(--cl-text-muted)]">{m.overview.noDomainsRank}</div>
           ) : (
             <div className="cl-list-stack space-y-2.5">
-              {domains.items.map((dom) => (
-                <button
-                  type="button"
-                  key={dom.root_domain}
-                  onClick={() => onOpenDomain(dom.root_domain)}
-                  className="cl-list-item block w-full cursor-pointer rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
-                >
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate font-mono font-semibold">
-                        {maskHostOrDomain(dom.root_domain, privacyMode)}
-                      </span>
-                      {dom.service_tag && (
-                        <span
-                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px]"
-                          style={{
-                            backgroundColor: 'var(--cl-accent-soft)',
-                            color: 'var(--cl-accent-primary)',
-                          }}
-                        >
-                          {dom.service_tag}
+              {domains.items.map((dom) => {
+                const tag = resolveServiceTag(dom.service_tag, dom.root_domain)
+                return (
+                  <button
+                    type="button"
+                    key={dom.root_domain}
+                    onClick={() => onOpenDomain(dom.root_domain)}
+                    className="cl-list-item block w-full cursor-pointer rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
+                  >
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate font-mono font-semibold">
+                          {maskHostOrDomain(dom.root_domain, privacyMode)}
                         </span>
-                      )}
+                        {tag && (
+                          <span
+                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px]"
+                            style={{
+                              backgroundColor: 'var(--cl-accent-soft)',
+                              color: 'var(--cl-accent-primary)',
+                            }}
+                          >
+                            {tag}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className="shrink-0 font-mono font-bold tabular-nums"
+                        style={{ color: 'var(--cl-accent-primary)' }}
+                      >
+                        {formatBytes(dom.total_bytes)}
+                      </span>
                     </div>
-                    <span
-                      className="shrink-0 font-mono font-bold tabular-nums"
-                      style={{ color: 'var(--cl-accent-primary)' }}
-                    >
-                      {formatBytes(dom.total_bytes)}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <div
-                      className="h-1.5 flex-1 overflow-hidden rounded-full"
-                      style={{ backgroundColor: 'var(--cl-border-subtle)' }}
-                    >
+                    <div className="mt-1.5 flex items-center gap-2">
                       <div
-                        className="cl-progress-fill h-full rounded-full"
-                        style={{
-                          width: `${Math.max(2, dom.share_pct)}%`,
-                          backgroundColor: 'var(--cl-status-success)',
-                        }}
-                      />
+                        className="h-1.5 flex-1 overflow-hidden rounded-full"
+                        style={{ backgroundColor: 'var(--cl-border-subtle)' }}
+                      >
+                        <div
+                          className="cl-progress-fill h-full rounded-full"
+                          style={{
+                            width: `${Math.max(2, dom.share_pct)}%`,
+                            backgroundColor: 'var(--cl-status-success)',
+                          }}
+                        />
+                      </div>
+                      <span className="w-11 text-right font-mono text-[10px] text-[var(--cl-text-muted)] tabular-nums">
+                        {dom.share_pct.toFixed(1)}%
+                      </span>
                     </div>
-                    <span className="w-11 text-right font-mono text-[10px] text-[var(--cl-text-muted)] tabular-nums">
-                      {dom.share_pct.toFixed(1)}%
-                    </span>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>

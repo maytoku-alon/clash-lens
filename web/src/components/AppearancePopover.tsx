@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, EyeOff, LayoutGrid, Palette, Rows3 } from 'lucide-react'
+import { Check, EyeOff, Languages, LayoutGrid, Palette, Rows3 } from 'lucide-react'
+import { useI18n } from '../i18n/I18nProvider'
 import { useTheme } from '../theme/ThemeProvider'
 
 export function AppearancePopover() {
   const { themeId, availableThemes, setThemeId, layout, setLayout, privacyMode, togglePrivacyMode } = useTheme()
+  const { lang, setLang, m } = useI18n()
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
@@ -31,7 +33,7 @@ export function AppearancePopover() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={`cl-icon-btn ${open ? 'border-[var(--cl-border-focus)] text-[var(--cl-accent-primary)]' : ''}`}
-        title="外观主题与布局"
+        title={m.appearance.buttonTitle}
         aria-expanded={open}
       >
         <Palette className="h-3.5 w-3.5" strokeWidth={1.6} />
@@ -40,11 +42,12 @@ export function AppearancePopover() {
       {open && (
         <div className="cl-popover absolute right-0 top-9 z-40 w-72 rounded-xl border p-3 shadow-xl">
           <div className="mb-2 text-[11px] font-semibold tracking-tight text-[var(--cl-text-muted)]">
-            主题风格
+            {m.appearance.themeStyle}
           </div>
           <div className="space-y-1">
             {availableThemes.map((t) => {
               const active = t.id === themeId
+              const localized = m.appearance.themes[t.id]
               return (
                 <button
                   type="button"
@@ -61,9 +64,11 @@ export function AppearancePopover() {
                       className="text-xs font-medium"
                       style={{ color: active ? 'var(--cl-accent-primary)' : 'var(--cl-text-primary)' }}
                     >
-                      {t.name}
+                      {localized?.name ?? t.name}
                     </div>
-                    <div className="truncate text-[10px] text-[var(--cl-text-muted)]">{t.description}</div>
+                    <div className="truncate text-[10px] text-[var(--cl-text-muted)]">
+                      {localized?.description ?? t.description}
+                    </div>
                   </div>
                   {active && (
                     <Check className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--cl-accent-primary)' }} />
@@ -79,7 +84,7 @@ export function AppearancePopover() {
           />
 
           <div className="mb-1.5 text-[11px] font-semibold tracking-tight text-[var(--cl-text-muted)]">
-            总览大屏布局
+            {m.appearance.overviewLayout}
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             <button
@@ -93,7 +98,7 @@ export function AppearancePopover() {
               }}
             >
               <Rows3 className="h-3 w-3" />
-              经典布局
+              {m.appearance.classicLayout}
             </button>
             <button
               type="button"
@@ -106,7 +111,43 @@ export function AppearancePopover() {
               }}
             >
               <LayoutGrid className="h-3 w-3" />
-              Bento 宽屏
+              {m.appearance.bentoLayout}
+            </button>
+          </div>
+
+          <div
+            className="my-2.5 border-t"
+            style={{ borderColor: 'var(--cl-border-subtle)' }}
+          />
+
+          <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-tight text-[var(--cl-text-muted)]">
+            <Languages className="h-3 w-3" />
+            {m.appearance.languageSection}
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setLang('zh')}
+              className="flex cursor-pointer items-center justify-center rounded-md border px-2 py-1.5 text-[11px] font-medium transition"
+              style={{
+                borderColor: lang === 'zh' ? 'var(--cl-border-focus)' : 'var(--cl-border-subtle)',
+                backgroundColor: lang === 'zh' ? 'var(--cl-accent-soft)' : 'var(--cl-bg-sidebar)',
+                color: lang === 'zh' ? 'var(--cl-accent-primary)' : 'var(--cl-text-muted)',
+              }}
+            >
+              {m.appearance.langZh}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLang('en')}
+              className="flex cursor-pointer items-center justify-center rounded-md border px-2 py-1.5 text-[11px] font-medium transition"
+              style={{
+                borderColor: lang === 'en' ? 'var(--cl-border-focus)' : 'var(--cl-border-subtle)',
+                backgroundColor: lang === 'en' ? 'var(--cl-accent-soft)' : 'var(--cl-bg-sidebar)',
+                color: lang === 'en' ? 'var(--cl-accent-primary)' : 'var(--cl-text-muted)',
+              }}
+            >
+              {m.appearance.langEn}
             </button>
           </div>
 
@@ -134,9 +175,9 @@ export function AppearancePopover() {
                   className="text-[11px] font-medium"
                   style={{ color: privacyMode ? 'var(--cl-accent-primary)' : 'var(--cl-text-primary)' }}
                 >
-                  隐私脱敏模式
+                  {m.appearance.privacyMode}
                 </div>
-                <div className="text-[10px] text-[var(--cl-text-muted)]">演示时隐藏域名与 IP 明文</div>
+                <div className="text-[10px] text-[var(--cl-text-muted)]">{m.appearance.privacyDesc}</div>
               </div>
             </div>
             <span

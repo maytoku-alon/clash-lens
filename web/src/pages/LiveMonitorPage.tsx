@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as echarts from 'echarts'
 import { Activity, Check, Copy, ExternalLink, Lock, Pause, Play, Search, ShieldAlert, TrendingUp, Wifi, X } from 'lucide-react'
 import { EChartBox } from '../components/EChartBox'
+import { useI18n } from '../i18n/I18nProvider'
 import { buildChartTheme, buildSpeedValueAxis } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
 import type { LiveConnectionItem, LiveHubSnapshot } from '../types/api'
@@ -134,6 +135,7 @@ export function LiveMonitorPage({
   onOpenApp,
 }: LiveMonitorPageProps) {
   const { theme, tokens, colorMode, privacyMode } = useTheme()
+  const { lang, m, resolveServiceTag, resolveProcessName } = useI18n()
   const chartTheme = useMemo(
     () => buildChartTheme(tokens, colorMode, theme.chartEffects),
     [tokens, colorMode, theme.chartEffects],
@@ -412,7 +414,7 @@ export function LiveMonitorPage({
       yAxis: buildSpeedValueAxis(peakSpeed, chartTheme, 10),
       series: [
         {
-          name: '下行速率',
+          name: m.live.downSpeedSeries,
           type: 'line',
           smooth: true,
           symbol: 'none',
@@ -421,7 +423,7 @@ export function LiveMonitorPage({
           data: pts.map((p) => p.down),
         },
         {
-          name: '上行速率',
+          name: m.live.upSpeedSeries,
           type: 'line',
           smooth: true,
           symbol: 'none',
@@ -431,14 +433,14 @@ export function LiveMonitorPage({
         },
       ],
     }
-  }, [rateHistory, chartTheme])
+  }, [rateHistory, chartTheme, m])
 
   return (
     <div className="space-y-4">
       {/* Summary Strip */}
       <div className="grid gap-3 sm:grid-cols-4">
         <div className="cl-card rounded-xl p-4">
-          <div className="text-xs text-[var(--cl-text-muted)]">全网实时下行</div>
+          <div className="text-xs text-[var(--cl-text-muted)]">{m.live.globalDown}</div>
           <div
             className="mt-1.5 font-mono text-2xl font-bold tabular-nums"
             style={{ color: chartTheme.liveColors.down }}
@@ -446,11 +448,11 @@ export function LiveMonitorPage({
             ↓ {formatSpeed(live?.total_down_bps)}
           </div>
           <div className="mt-1 font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
-            代理 {formatSpeed(live?.proxy_down_bps)} · 直连 {formatSpeed(live?.direct_down_bps)}
+            {m.live.speedSplit(formatSpeed(live?.proxy_down_bps), formatSpeed(live?.direct_down_bps))}
           </div>
         </div>
         <div className="cl-card rounded-xl p-4">
-          <div className="text-xs text-[var(--cl-text-muted)]">全网实时上行</div>
+          <div className="text-xs text-[var(--cl-text-muted)]">{m.live.globalUp}</div>
           <div
             className="mt-1.5 font-mono text-2xl font-bold tabular-nums"
             style={{ color: chartTheme.liveColors.up }}
@@ -458,25 +460,25 @@ export function LiveMonitorPage({
             ↑ {formatSpeed(live?.total_up_bps)}
           </div>
           <div className="mt-1 font-mono text-[11px] text-[var(--cl-text-muted)] tabular-nums">
-            代理 {formatSpeed(live?.proxy_up_bps)} · 直连 {formatSpeed(live?.direct_up_bps)}
+            {m.live.speedSplit(formatSpeed(live?.proxy_up_bps), formatSpeed(live?.direct_up_bps))}
           </div>
         </div>
         <div className="cl-card rounded-xl p-4">
-          <div className="text-xs text-[var(--cl-text-muted)]">活跃连接总数</div>
+          <div className="text-xs text-[var(--cl-text-muted)]">{m.live.totalActiveConns}</div>
           <div className="mt-1.5 font-mono text-2xl font-bold tabular-nums">
             {live?.active_conns ?? 0}
           </div>
-          <div className="mt-1 text-[11px] text-[var(--cl-text-muted)]">每 2 秒 WebSocket 自动推送</div>
+          <div className="mt-1 text-[11px] text-[var(--cl-text-muted)]">{m.live.wsPushHint}</div>
         </div>
         <div className="cl-card rounded-xl p-4">
-          <div className="text-xs text-[var(--cl-text-muted)]">在线采集设备</div>
+          <div className="text-xs text-[var(--cl-text-muted)]">{m.live.onlineDevicesCard}</div>
           <div
             className="mt-1.5 font-mono text-2xl font-bold tabular-nums"
             style={{ color: 'var(--cl-status-success)' }}
           >
             {live?.online_devices ?? 0} / {live?.devices?.length ?? 0}
           </div>
-          <div className="mt-1 text-[11px] text-[var(--cl-text-muted)]">支持离线自动缓冲补传</div>
+          <div className="mt-1 text-[11px] text-[var(--cl-text-muted)]">{m.live.offlineBufferHint}</div>
         </div>
       </div>
 
@@ -484,7 +486,7 @@ export function LiveMonitorPage({
       <div className="cl-card rounded-xl p-4 sm:p-5">
         <div className="mb-2 flex items-center gap-2">
           <Activity className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
-          <h2 className="text-sm font-semibold">实时速率曲线（最近 60 个采样点）</h2>
+          <h2 className="text-sm font-semibold">{m.live.speedCurveTitle}</h2>
         </div>
         <EChartBox option={chartOption} className="h-[240px] w-full" />
       </div>
@@ -494,7 +496,7 @@ export function LiveMonitorPage({
         <div className="grid gap-3 sm:grid-cols-2 lg:col-span-7">
           {(live?.devices ?? []).length === 0 ? (
             <div className="cl-card flex items-center justify-center rounded-xl p-6 text-xs text-[var(--cl-text-muted)] sm:col-span-2">
-              暂无在线设备推送实时状态
+              {m.live.noOnlineDevices}
             </div>
           ) : (
             (live?.devices ?? []).map((d) => (
@@ -521,9 +523,9 @@ export function LiveMonitorPage({
                             backgroundColor: 'var(--cl-accent-soft)',
                             color: 'var(--cl-accent-primary)',
                           }}
-                          title="打开原生 Clash 管理面板"
+                          title={m.live.openClashPanelTitle}
                         >
-                          面板
+                          {m.live.panelShort}
                           <ExternalLink className="h-2.5 w-2.5" />
                         </a>
                       )}
@@ -539,7 +541,7 @@ export function LiveMonitorPage({
                         </span>
                       )}
                       {d.tun_enabled && !d.sniffer_enabled && (
-                        <span title="TUN 开启但域名嗅探未开启">
+                        <span title={m.live.tunNoSnifferTitle}>
                           <ShieldAlert className="h-3.5 w-3.5" style={{ color: 'var(--cl-status-warning)' }} />
                         </span>
                       )}
@@ -567,12 +569,14 @@ export function LiveMonitorPage({
                         ↑ {formatSpeed(d.up_bps)}
                       </span>
                     </div>
-                    <span className="shrink-0 text-xs text-[var(--cl-text-muted)]">{d.active_conns} 连接</span>
+                    <span className="shrink-0 text-xs text-[var(--cl-text-muted)]">
+                      {m.common.connsCount(d.active_conns)}
+                    </span>
                   </div>
                 </div>
                 <div className="mt-3 flex justify-between text-[11px] text-[var(--cl-text-muted)]">
-                  <span>进程识别: {d.find_process_mode || '未知'}</span>
-                  <span>心跳: {formatRelativeTime(d.last_seen_at)}</span>
+                  <span>{m.live.processDetectMode(d.find_process_mode || m.common.unknown)}</span>
+                  <span>{m.live.heartbeatLabel(formatRelativeTime(d.last_seen_at, lang))}</span>
                 </div>
               </div>
             ))
@@ -588,7 +592,7 @@ export function LiveMonitorPage({
           <div className="mb-3 flex h-6 shrink-0 items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <TrendingUp className="h-4 w-4 shrink-0" style={{ color: 'var(--cl-accent-primary)' }} />
-              <h3 className="truncate text-sm font-semibold">当前活跃进程实时速率 Top 5</h3>
+              <h3 className="truncate text-sm font-semibold">{m.live.topProcessesTitle}</h3>
               <span
                 data-testid="proc-hover-lock-badge"
                 aria-hidden={!(procHoverLocked && !paused)}
@@ -601,14 +605,16 @@ export function LiveMonitorPage({
                 }}
               >
                 <Lock className="h-2.5 w-2.5" />
-                悬停已锁定
+                {m.live.hoverLocked}
               </span>
             </div>
-            <span className="shrink-0 font-mono text-[10px] text-[var(--cl-text-muted)]">阻尼排序 · 防抖驻留</span>
+            <span className="shrink-0 font-mono text-[10px] text-[var(--cl-text-muted)]">
+              {m.live.dampedSortingHint}
+            </span>
           </div>
           {procRows.length === 0 ? (
             <div className="flex flex-1 items-center justify-center py-6 text-center text-xs text-[var(--cl-text-muted)]">
-              当前暂无活跃吞吐进程
+              {m.live.noActiveProcessTraffic}
             </div>
           ) : (
             <div className="cl-list-stack space-y-2">
@@ -629,9 +635,9 @@ export function LiveMonitorPage({
                   >
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <div className="flex min-w-0 items-center gap-2">
-                        <span className="truncate font-semibold">{p.process}</span>
+                        <span className="truncate font-semibold">{resolveProcessName(p.process)}</span>
                         <span className="shrink-0 font-mono text-[10px] text-[var(--cl-text-muted)]">
-                          {p.idle ? '空闲保留' : `${p.conns} 连接`}
+                          {p.idle ? m.live.idleKept : m.common.connsCount(p.conns)}
                         </span>
                       </div>
                       <div className="flex shrink-0 items-center gap-2 font-mono text-[11px] tabular-nums">
@@ -674,7 +680,7 @@ export function LiveMonitorPage({
         >
           <div className="flex h-6 flex-wrap items-center gap-2">
             <Wifi className="h-4 w-4" style={{ color: 'var(--cl-accent-primary)' }} />
-            <h3 className="text-sm font-semibold">当前活跃高吞吐连接 Top 25</h3>
+            <h3 className="text-sm font-semibold">{m.live.topConnsTitle}</h3>
             {paused ? (
               <span
                 className="inline-flex h-5 items-center rounded px-1.5 font-mono text-[10px] leading-none"
@@ -683,7 +689,7 @@ export function LiveMonitorPage({
                   color: 'var(--cl-status-warning)',
                 }}
               >
-                列表已冻结（后台曲线仍持续更新）
+                {m.live.frozenNotice}
               </span>
             ) : tableHoverLocked ? (
               <span
@@ -695,20 +701,20 @@ export function LiveMonitorPage({
                 }}
               >
                 <Lock className="h-2.5 w-2.5" />
-                悬停已锁定顺序{pendingNewCount > 0 ? ` · 待合入 +${pendingNewCount}` : ''}
+                {m.live.hoverOrderLocked(pendingNewCount)}
               </span>
             ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="cl-segment" title="切换连接排行排序依据">
+            <div className="cl-segment" title={m.live.sortTitle}>
               <button
                 type="button"
                 data-testid="conn-sort-total"
                 onClick={() => setSortMode('total')}
                 className={`cl-segment-item ${sortMode === 'total' ? 'cl-segment-item-active' : ''}`}
               >
-                按累计
+                {m.live.sortByTotal}
               </button>
               <button
                 type="button"
@@ -716,7 +722,7 @@ export function LiveMonitorPage({
                 onClick={() => setSortMode('speed')}
                 className={`cl-segment-item ${sortMode === 'speed' ? 'cl-segment-item-active' : ''}`}
               >
-                按速率
+                {m.live.sortByRate}
               </button>
             </div>
 
@@ -726,7 +732,7 @@ export function LiveMonitorPage({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="筛选进程 / 域名 / IP / 节点..."
+                placeholder={m.live.filterPlaceholder}
                 className="cl-input !h-7 w-56 pl-8 pr-7 text-[11px]"
               />
               {searchQuery && (
@@ -734,7 +740,7 @@ export function LiveMonitorPage({
                   type="button"
                   onClick={() => setSearchQuery('')}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--cl-text-muted)] hover:text-[var(--cl-text-primary)]"
-                  title="清除筛选"
+                  title={m.live.clearFilterTitle}
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -744,10 +750,10 @@ export function LiveMonitorPage({
               type="button"
               onClick={handleTogglePause}
               className={paused ? 'cl-btn-accent !h-7' : 'cl-btn-secondary !h-7'}
-              title={paused ? '恢复每秒实时更新连接列表' : '暂停连接列表刷新以便选中与复制'}
+              title={paused ? m.live.resumeTitle : m.live.pauseTitle}
             >
               {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
-              {paused ? '恢复刷新' : '暂停刷新'}
+              {paused ? m.live.resumeBtn : m.live.pauseBtn}
             </button>
           </div>
         </div>
@@ -763,29 +769,28 @@ export function LiveMonitorPage({
               style={{ borderColor: 'var(--cl-border-subtle)' }}
             >
               <tr>
-                <th className="w-[112px] px-4 py-2 font-medium">设备</th>
-                <th className="w-[132px] px-4 py-2 font-medium">应用进程</th>
-                <th className="px-4 py-2 font-medium">域名 / 主机</th>
-                <th className="w-[136px] px-4 py-2 font-medium">出口节点</th>
-                <th className="w-[94px] px-4 py-2 font-medium">入口</th>
-                <th className="w-[98px] px-4 py-2 text-right font-medium">实时下行</th>
-                <th className="w-[98px] px-4 py-2 text-right font-medium">实时上行</th>
-                <th className="w-[98px] px-4 py-2 text-right font-medium">连接累计</th>
+                <th className="w-[112px] px-4 py-2 font-medium">{m.live.colDevice}</th>
+                <th className="w-[132px] px-4 py-2 font-medium">{m.live.colProcess}</th>
+                <th className="px-4 py-2 font-medium">{m.live.colHost}</th>
+                <th className="w-[136px] px-4 py-2 font-medium">{m.live.colEgress}</th>
+                <th className="w-[94px] px-4 py-2 font-medium">{m.live.colInbound}</th>
+                <th className="w-[98px] px-4 py-2 text-right font-medium">{m.live.colDownRate}</th>
+                <th className="w-[98px] px-4 py-2 text-right font-medium">{m.live.colUpRate}</th>
+                <th className="w-[98px] px-4 py-2 text-right font-medium">{m.live.colConnTotal}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--cl-border-subtle)]">
               {filteredConnections.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-10 text-center text-[var(--cl-text-muted)]">
-                    {searchQuery.trim()
-                      ? '没有匹配当前搜索关键词的活跃连接'
-                      : '当前暂无活跃高吞吐连接（等待设备实时推送）'}
+                    {searchQuery.trim() ? m.live.emptyFilteredConns : m.live.emptyActiveConns}
                   </td>
                 </tr>
               ) : (
                 filteredConnections.map((c) => {
                   const rowKey = c.key
                   const displayHost = maskHostOrDomain(c.host, privacyMode)
+                  const serviceTag = resolveServiceTag(c.service_tag, c.root_domain, c.host)
                   return (
                     <tr
                       key={rowKey}
@@ -805,7 +810,7 @@ export function LiveMonitorPage({
                           className="cursor-pointer truncate font-semibold hover:underline"
                           style={{ color: 'var(--cl-accent-primary)' }}
                         >
-                          {c.process_display}
+                          {resolveProcessName(c.process_display)}
                         </button>
                       </td>
                       <td className="px-4 py-1.5 font-mono">
@@ -817,24 +822,24 @@ export function LiveMonitorPage({
                             <span
                               className="shrink-0 rounded px-1 py-0.5 font-mono text-[10px] text-[var(--cl-text-muted)]"
                               style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
-                              title={`当前合并展示 ${c.connCount} 条同目标并发连接`}
+                              title={m.live.mergedConnsTitle(c.connCount)}
                             >
                               ×{c.connCount}
                             </span>
                           )}
-                          {c.service_tag ? (
+                          {serviceTag ? (
                             <span
                               className="shrink-0 rounded px-1 py-0.5 font-sans text-[10px] text-[var(--cl-text-muted)]"
                               style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
                             >
-                              {c.service_tag}
+                              {serviceTag}
                             </span>
                           ) : null}
                           <button
                             type="button"
                             onClick={() => void handleCopyHost(rowKey, c.host)}
                             className="shrink-0 rounded p-0.5 text-[var(--cl-text-muted)] transition hover:bg-[var(--cl-bg-surface-hover)] hover:text-[var(--cl-text-primary)]"
-                            title="复制目标地址"
+                            title={m.live.copyTargetTitle}
                           >
                             {copiedRowKey === rowKey ? (
                               <Check className="h-3 w-3" style={{ color: 'var(--cl-status-success)' }} />

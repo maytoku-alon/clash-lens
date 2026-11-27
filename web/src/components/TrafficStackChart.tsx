@@ -3,6 +3,7 @@ import type * as echarts from 'echarts'
 import { Crosshair, Search, X } from 'lucide-react'
 import { maxStackedSeriesValue } from '../adapters/trafficAdapter'
 import { trafficApi } from '../api/trafficApi'
+import { useI18n } from '../i18n/I18nProvider'
 import { buildByteValueAxis, buildChartTheme } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
 import type { BurstEvent, GroupByDim, TimeseriesResponse, TrafficScope } from '../types/api'
@@ -10,13 +11,7 @@ import { formatBytes, formatFullTime, formatTimeBucket } from '../utils/format'
 import { maskHostOrDomain } from '../utils/privacy'
 import { EChartBox } from './EChartBox'
 
-const DIM_TABS: { key: GroupByDim; label: string }[] = [
-  { key: 'process', label: '按应用' },
-  { key: 'domain', label: '按网站' },
-  { key: 'device', label: '按设备' },
-  { key: 'node', label: '按节点' },
-  { key: 'direction', label: '上下行' },
-]
+const DIM_KEYS: GroupByDim[] = ['process', 'domain', 'device', 'node', 'direction']
 
 interface TrafficStackChartProps {
   data: TimeseriesResponse | null
@@ -36,6 +31,7 @@ export function TrafficStackChart({
   onInspectApp,
 }: TrafficStackChartProps) {
   const { theme, tokens, colorMode, privacyMode } = useTheme()
+  const { lang, m, resolveProcessName, resolveServiceTag } = useI18n()
   const chartTheme = useMemo(
     () => buildChartTheme(tokens, colorMode, theme.chartEffects),
     [tokens, colorMode, theme.chartEffects],
@@ -138,7 +134,14 @@ export function TrafficStackChart({
     const peakStacked = maxStackedSeriesValue(seriesList)
     const displaySeriesNames = seriesList.map((s) => {
       const raw = s.label || s.name
-      return groupBy === 'domain' ? maskHostOrDomain(raw, privacyMode) : raw
+      if (raw === '其他') return m.common.other
+      if (groupBy === 'domain') return maskHostOrDomain(raw, privacyMode)
+      if (groupBy === 'process') return resolveProcessName(raw, s.name)
+      if (groupBy === 'direction') {
+        if (raw === '下行') return m.live.downSpeedSeries
+        if (raw === '上行') return m.live.upSpeedSeries
+      }
+      return raw
     })
 
     return {
@@ -169,9 +172,9 @@ export function TrafficStackChart({
           return `
             <div style="min-width:190px;">
               <div style="font-weight:600;margin-bottom:4px;font-family:var(--cl-font-mono);">${first.axisValueLabel || ''}</div>
-              ${rows || `<div style="color:${chartTheme.textMuted};">无流量记录</div>`}
+              ${rows || `<div style="color:${chartTheme.textMuted};">${m.overview.tooltipNoFlow}</div>`}
               <div style="border-top:1px solid ${chartTheme.tooltip.borderColor};margin-top:5px;padding-top:4px;display:flex;justify-content:space-between;font-family:var(--cl-font-mono);">
-                <span style="color:${chartTheme.textMuted};">时段合计</span>
+                <span style="color:${chartTheme.textMuted};">${m.overview.tooltipBucketTotal}</span>
                 <span style="font-weight:700;color:${chartTheme.accentPrimary};">${formatBytes(total)}</span>
               </div>
             </div>
@@ -222,7 +225,7 @@ export function TrafficStackChart({
         data: s.values,
       })),
     }
-  }, [data, chartTheme, groupBy, privacyMode])
+  }, [data, chartTheme, groupBy, privacyMode, m, resolveProcessName])
 
   const handleReady = (chart: echarts.ECharts) => {
     chartRef.current = chart
@@ -251,27 +254,33 @@ export function TrafficStackChart({
     })
   }
 
+  const dimLabel: Record<GroupByDim, string> = {
+    process: m.overview.dimProcess,
+    domain: m.overview.dimDomain,
+    device: m.overview.dimDevice,
+    node: m.overview.dimNode,
+    direction: m.overview.dimDirection,
+  }
+
   return (
     <div className="cl-card flex h-full flex-col rounded-xl p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold tracking-tight">分时流量分布与突发溯源</h2>
-          <p className="text-xs text-[var(--cl-text-muted)]">
-            点击任意柱状时段，或启用框选拖拽查看该时间段的精确进程与网站消耗
-          </p>
+          <h2 className="text-sm font-semibold tracking-tight">{m.overview.stackTitle}</h2>
+          <p className="text-xs text-[var(--cl-text-muted)]">{m.overview.stackSubtitle}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="cl-segment">
-            {DIM_TABS.map((t) => (
+            {DIM_KEYS.map((key) => (
               <button
                 type="button"
-                key={t.key}
-                onClick={() => onGroupByChange(t.key)}
-                className={`cl-segment-item ${groupBy === t.key ? 'cl-segment-item-active' : ''}`}
-                style={groupBy === t.key ? { color: 'var(--cl-accent-primary)' } : undefined}
+                key={key}
+                onClick={() => onGroupByChange(key)}
+                className={`cl-segment-item ${groupBy === key ? 'cl-segment-item-active' : ''}`}
+                style={groupBy === key ? { color: 'var(--cl-accent-primary)' } : undefined}
               >
-                {t.label}
+                {dimLabel[key]}
               </button>
             ))}
           </div>
@@ -282,7 +291,7 @@ export function TrafficStackChart({
             className={brushMode ? 'cl-btn-accent' : 'cl-btn-secondary'}
           >
             <Crosshair className="h-3.5 w-3.5" strokeWidth={1.6} />
-            {brushMode ? '框选中（拖拽图表）' : '框选溯源'}
+            {brushMode ? m.overview.brushActive : m.overview.brushIdle}
           </button>
         </div>
       </div>
@@ -301,10 +310,10 @@ export function TrafficStackChart({
             <div className="flex items-center gap-2 text-xs">
               <Search className="h-3.5 w-3.5" style={{ color: 'var(--cl-accent-primary)' }} />
               <span className="font-semibold" style={{ color: 'var(--cl-accent-primary)' }}>
-                时段流量溯源
+                {m.overview.spikeInspectTitle}
               </span>
               <span className="font-mono tabular-nums text-[var(--cl-text-muted)]">
-                {formatFullTime(inspectedRange.from)} → {formatFullTime(inspectedRange.to)}
+                {formatFullTime(inspectedRange.from, lang)} → {formatFullTime(inspectedRange.to, lang)}
               </span>
               {showSlowLoading && (
                 <span
@@ -314,14 +323,14 @@ export function TrafficStackChart({
                     color: 'var(--cl-accent-primary)',
                   }}
                 >
-                  查询中...
+                  {m.overview.querying}
                 </span>
               )}
             </div>
             <button
               onClick={clearInspection}
               className="rounded p-1 text-[var(--cl-text-muted)] hover:bg-[var(--cl-bg-surface-hover)] hover:text-[var(--cl-text-primary)]"
-              title="关闭溯源面板"
+              title={m.overview.closeInspectTitle}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -334,39 +343,44 @@ export function TrafficStackChart({
                   showSlowLoading ? 'opacity-65' : 'opacity-100'
                 }`}
               >
-                {spikeItems.slice(0, 6).map((item, idx) => (
-                  <button
-                    key={`${item.bucket_ts}-${item.process_display}-${item.root_domain}-${idx}`}
-                    onClick={() => onInspectApp(item.process_display)}
-                    className="flex cursor-pointer flex-col gap-1 rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
-                    style={{
-                      borderColor: 'var(--cl-border-subtle)',
-                      backgroundColor: 'var(--cl-bg-surface)',
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-semibold">{item.process_display}</span>
-                      <span
-                        className="font-mono text-xs font-bold tabular-nums"
-                        style={{ color: 'var(--cl-accent-primary)' }}
-                      >
-                        {formatBytes(item.total_bytes)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--cl-text-muted)]">
-                      <span className="truncate">
-                        {maskHostOrDomain(item.root_domain, privacyMode)}
-                        {item.service_tag ? ` · ${item.service_tag}` : ''}
-                      </span>
-                      <span
-                        className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]"
-                        style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
-                      >
-                        {item.route_type === 'DIRECT' ? 'DIRECT' : item.egress_node}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+                {spikeItems.slice(0, 6).map((item, idx) => {
+                  const tag = resolveServiceTag(item.service_tag, item.root_domain)
+                  return (
+                    <button
+                      key={`${item.bucket_ts}-${item.process_display}-${item.root_domain}-${idx}`}
+                      onClick={() => onInspectApp(item.process_display)}
+                      className="flex cursor-pointer flex-col gap-1 rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
+                      style={{
+                        borderColor: 'var(--cl-border-subtle)',
+                        backgroundColor: 'var(--cl-bg-surface)',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-semibold">
+                          {resolveProcessName(item.process_display)}
+                        </span>
+                        <span
+                          className="font-mono text-xs font-bold tabular-nums"
+                          style={{ color: 'var(--cl-accent-primary)' }}
+                        >
+                          {formatBytes(item.total_bytes)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--cl-text-muted)]">
+                        <span className="truncate">
+                          {maskHostOrDomain(item.root_domain, privacyMode)}
+                          {tag ? ` · ${tag}` : ''}
+                        </span>
+                        <span
+                          className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]"
+                          style={{ backgroundColor: 'var(--cl-bg-surface-hover)' }}
+                        >
+                          {item.route_type === 'DIRECT' ? 'DIRECT' : item.egress_node}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             ) : !hasLoaded ? (
               showSlowLoading ? (
@@ -385,7 +399,7 @@ export function TrafficStackChart({
               ) : null
             ) : (
               <div className="flex h-[124px] items-center justify-center text-xs text-[var(--cl-text-muted)]">
-                该时段暂无记录明细。
+                {m.overview.spikeEmpty}
               </div>
             )}
           </div>

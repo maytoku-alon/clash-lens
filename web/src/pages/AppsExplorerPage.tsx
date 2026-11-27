@@ -5,6 +5,7 @@ import { maxStackedSeriesValue } from '../adapters/trafficAdapter'
 import type { QueryParams } from '../api/trafficApi'
 import { EChartBox } from '../components/EChartBox'
 import { useAppsExplorerData } from '../hooks/useDashboardQueries'
+import { useI18n } from '../i18n/I18nProvider'
 import { buildByteValueAxis, buildChartTheme } from '../theme/chartAdapter'
 import { useTheme } from '../theme/ThemeProvider'
 import { formatBytes, formatNumber, formatTimeBucket } from '../utils/format'
@@ -57,6 +58,7 @@ export function AppsExplorerPage({
   initialTarget,
 }: AppsExplorerPageProps) {
   const { theme, tokens, colorMode, privacyMode } = useTheme()
+  const { m, resolveServiceTag, resolveProcessName } = useI18n()
   const chartTheme = useMemo(
     () => buildChartTheme(tokens, colorMode, theme.chartEffects),
     [tokens, colorMode, theme.chartEffects],
@@ -95,14 +97,14 @@ export function AppsExplorerPage({
     const ruleStr = formatClashRule(targetHost, ruleFormat)
     const ok = await copyTextSafe(ruleStr)
     if (!ok) {
-      setRuleToast('复制失败，请检查浏览器剪贴板权限')
+      setRuleToast(m.common.copyFailed)
     } else {
       setCopiedRuleKey(rowKey)
       setTimeout(() => setCopiedRuleKey((prev) => (prev === rowKey ? '' : prev)), 1600)
       setRuleToast(
         privacyMode
-          ? `已复制分流规则（${ruleFormat === 'yaml' ? 'YAML' : 'Verge JS'}）`
-          : `已复制规则: ${ruleStr}`,
+          ? m.apps.copyRuleToastFmt(ruleFormat === 'yaml' ? 'yaml' : 'js')
+          : m.apps.copyRuleToastRaw(ruleStr),
       )
     }
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -117,7 +119,8 @@ export function AppsExplorerPage({
     const peakStacked = maxStackedSeriesValue(seriesList)
     const seriesNames = seriesList.map((s) => {
       const raw = s.label || s.name
-      return mode === 'app' ? maskHostOrDomain(raw, privacyMode) : raw
+      if (raw === '其他') return m.common.other
+      return mode === 'app' ? maskHostOrDomain(raw, privacyMode) : resolveProcessName(raw, s.name)
     })
 
     return {
@@ -158,7 +161,7 @@ export function AppsExplorerPage({
         data: s.values,
       })),
     }
-  }, [mode, appDetail, domainDetail, chartTheme, privacyMode])
+  }, [mode, appDetail, domainDetail, chartTheme, privacyMode, m, resolveProcessName])
 
   const sankeyOption = useMemo<echarts.EChartsCoreOption>(() => {
     const nodes = appDetail?.sankey?.nodes ?? []
@@ -166,7 +169,13 @@ export function AppsExplorerPage({
     const stripPrefix = (name: string) => name.replace(/^(app|dom|eg):/, '')
     const formatNodeDisplay = (rawName: string) => {
       const clean = stripPrefix(rawName)
-      return rawName.startsWith('dom:') ? maskHostOrDomain(clean, privacyMode) : clean
+      if (rawName.startsWith('dom:')) {
+        return clean === '其他网站' || clean === '其他' ? m.common.other : maskHostOrDomain(clean, privacyMode)
+      }
+      if (rawName.startsWith('app:')) {
+        return resolveProcessName(clean)
+      }
+      return clean
     }
 
     return {
@@ -217,7 +226,7 @@ export function AppsExplorerPage({
         },
       ],
     }
-  }, [appDetail, chartTheme, privacyMode])
+  }, [appDetail, chartTheme, privacyMode, m, resolveProcessName])
 
   const handleSankeyReady = (chart: echarts.ECharts) => {
     chart.on('click', (params: unknown) => {
@@ -281,10 +290,8 @@ export function AppsExplorerPage({
       {/* Header Mode Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-base font-bold tracking-tight">应用 × 网站 流量透视</h1>
-          <p className="text-xs text-[var(--cl-text-muted)]">
-            彻底看清某个程序（如 Chrome）到底访问了哪些网站与子域名、走了哪条节点或 TUN 出口
-          </p>
+          <h1 className="text-base font-bold tracking-tight">{m.apps.title}</h1>
+          <p className="text-xs text-[var(--cl-text-muted)]">{m.apps.subtitle}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -292,10 +299,10 @@ export function AppsExplorerPage({
             type="button"
             onClick={() => setOnlyMatch((v) => !v)}
             className={onlyMatch ? 'cl-btn-accent !h-7' : 'cl-btn-secondary !h-7'}
-            title="仅筛选命中共用 MATCH 兜底规则的明细条目"
+            title={m.apps.onlyMatchTitle}
           >
             <Filter className="h-3 w-3" />
-            仅看兜底流量 (MATCH)
+            {m.apps.onlyMatchBtn}
           </button>
 
           <div className="cl-segment">
@@ -306,7 +313,7 @@ export function AppsExplorerPage({
               style={mode === 'app' ? { color: 'var(--cl-accent-primary)' } : undefined}
             >
               <Layers className="h-3 w-3" />
-              按应用查网站
+              {m.apps.byAppTab}
             </button>
             <button
               type="button"
@@ -315,7 +322,7 @@ export function AppsExplorerPage({
               style={mode === 'domain' ? { color: 'var(--cl-accent-primary)' } : undefined}
             >
               <Globe className="h-3 w-3" />
-              按网站查应用
+              {m.apps.byDomainTab}
             </button>
           </div>
         </div>
@@ -334,7 +341,7 @@ export function AppsExplorerPage({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={mode === 'app' ? '搜索应用进程名...' : '搜索主域名或服务标签...'}
+              placeholder={mode === 'app' ? m.apps.searchAppPlaceholder : m.apps.searchDomainPlaceholder}
               className="cl-input w-full pl-8 pr-3"
             />
           </div>
@@ -342,7 +349,7 @@ export function AppsExplorerPage({
           <div className="cl-thin-scroll flex max-h-[680px] min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none">
             {mode === 'app' ? (
               !appsList || appsList.items.length === 0 ? (
-                <div className="py-8 text-center text-xs text-[var(--cl-text-muted)]">暂无应用数据</div>
+                <div className="py-8 text-center text-xs text-[var(--cl-text-muted)]">{m.apps.noAppsData}</div>
               ) : (
                 appsList.items.map((item) => {
                   const active = item.process_display === selectedApp
@@ -360,7 +367,9 @@ export function AppsExplorerPage({
                     >
                       <div className="flex h-5 items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-xs font-semibold">{item.process_display}</span>
+                          <span className="truncate text-xs font-semibold">
+                            {resolveProcessName(item.process_display)}
+                          </span>
                           {item.tun_bytes > 0 && (
                             <span
                               className="shrink-0 rounded px-1 py-0.5 font-mono text-[9px] leading-none"
@@ -384,7 +393,7 @@ export function AppsExplorerPage({
                         <span className="truncate font-mono">
                           {item.top_domains.slice(0, 2).map((d) => maskHostOrDomain(d.root_domain, privacyMode)).join(', ') || '-'}
                         </span>
-                        <span className="shrink-0 font-mono">{item.domain_count} 域名</span>
+                        <span className="shrink-0 font-mono">{m.common.domainsCount(item.domain_count)}</span>
                       </div>
                       <div
                         className="h-1 w-full overflow-hidden rounded-full"
@@ -403,10 +412,11 @@ export function AppsExplorerPage({
                 })
               )
             ) : !domainsList || domainsList.items.length === 0 ? (
-              <div className="py-8 text-center text-xs text-[var(--cl-text-muted)]">暂无域名数据</div>
+              <div className="py-8 text-center text-xs text-[var(--cl-text-muted)]">{m.apps.noDomainsData}</div>
             ) : (
               domainsList.items.map((item) => {
                 const active = item.root_domain === selectedDomain
+                const tag = resolveServiceTag(item.service_tag, item.root_domain)
                 return (
                   <button
                     type="button"
@@ -432,9 +442,9 @@ export function AppsExplorerPage({
                     </div>
                     <div className="flex h-4 items-center justify-between gap-2 text-[11px] text-[var(--cl-text-muted)]">
                       <span className="truncate">
-                        {item.service_tag || item.top_apps.map((a) => a.process_display).join(', ')}
+                        {tag || item.top_apps.map((a) => resolveProcessName(a.process_display)).join(', ')}
                       </span>
-                      <span className="shrink-0 font-mono">{item.app_count} 应用</span>
+                      <span className="shrink-0 font-mono">{m.common.appsCount(item.app_count)}</span>
                     </div>
                     <div
                       className="h-1 w-full overflow-hidden rounded-full"
@@ -462,14 +472,16 @@ export function AppsExplorerPage({
               {/* App Summary Header */}
               <div className="cl-card grid min-h-[96px] items-center gap-3 rounded-xl p-4 sm:grid-cols-4">
                 <div>
-                  <div className="text-xs text-[var(--cl-text-muted)]">应用总流量</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">{m.apps.appTotalBytes}</div>
                   <div className="mt-1 font-mono text-xl font-bold tabular-nums">
                     {formatBytes(appDetail.summary.total_bytes)}
                   </div>
-                  <div className="mt-0.5 text-[11px] text-[var(--cl-text-muted)]">{appDetail.process_display}</div>
+                  <div className="mt-0.5 text-[11px] text-[var(--cl-text-muted)]">
+                    {resolveProcessName(appDetail.process_display)}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--cl-text-muted)]">代理 / 直连</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">{m.apps.proxyVsDirect}</div>
                   <div className="mt-1 font-mono text-sm font-semibold tabular-nums">
                     <span style={{ color: chartTheme.routeColors.PROXY }}>
                       {formatBytes(appDetail.summary.proxy_bytes)}
@@ -484,7 +496,7 @@ export function AppsExplorerPage({
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--cl-text-muted)]">下行 / 上行</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">{m.apps.downVsUp}</div>
                   <div
                     className="mt-1 font-mono text-sm font-semibold tabular-nums"
                     style={{ color: chartTheme.liveColors.down }}
@@ -499,12 +511,12 @@ export function AppsExplorerPage({
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--cl-text-muted)]">关联主域名 / 连接数</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">{m.apps.relatedDomainsConns}</div>
                   <div className="mt-1 font-mono text-xl font-bold tabular-nums">
                     {appDetail.summary.domain_count}
                   </div>
                   <div className="mt-0.5 font-mono text-[11px] text-[var(--cl-text-muted)]">
-                    {formatNumber(appDetail.summary.conn_count)} 次连接
+                    {m.apps.connsTimes(Number(formatNumber(appDetail.summary.conn_count).replace(/,/g, '')) ? 0 : 0).replace('0', formatNumber(appDetail.summary.conn_count))}
                   </div>
                 </div>
               </div>
@@ -512,19 +524,19 @@ export function AppsExplorerPage({
               {/* Timeline & Sankey */}
               <div className="grid gap-4 xl:grid-cols-2">
                 <div className="cl-card rounded-xl p-4">
-                  <div className="mb-2 text-xs font-semibold">分时网站消耗趋势</div>
+                  <div className="mb-2 text-xs font-semibold">{m.apps.domainTrendTitle}</div>
                   <EChartBox option={timelineOption} className="h-[240px] w-full" />
                 </div>
                 <div className="cl-card rounded-xl p-4">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold">流量去向桑基图（应用 → 主域名 → 出口）</div>
-                    <span className="text-[10px] text-[var(--cl-text-muted)]">点击主域名或出口可筛选下表</span>
+                    <div className="text-xs font-semibold">{m.apps.sankeyTitle}</div>
+                    <span className="text-[10px] text-[var(--cl-text-muted)]">{m.apps.sankeySubtitle}</span>
                   </div>
                   {appDetail.sankey.nodes.length > 0 ? (
                     <EChartBox option={sankeyOption} className="h-[240px] w-full" onChartReady={handleSankeyReady} />
                   ) : (
                     <div className="flex h-[240px] items-center justify-center text-xs text-[var(--cl-text-muted)]">
-                      暂无足够流向数据
+                      {m.apps.sankeyEmpty}
                     </div>
                   )}
                 </div>
@@ -537,7 +549,7 @@ export function AppsExplorerPage({
                   style={{ borderColor: 'var(--cl-border-subtle)' }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-semibold">访问网站明细（点击任意主域名展开精确子域名与节点）</h3>
+                    <h3 className="text-sm font-semibold">{m.apps.domainDetailTableTitle}</h3>
                     {sankeyFilter && (
                       <button
                         type="button"
@@ -546,8 +558,8 @@ export function AppsExplorerPage({
                       >
                         <span>
                           {sankeyFilter.stage === 'domain'
-                            ? `域名: ${maskHostOrDomain(sankeyFilter.value, privacyMode)}`
-                            : `出口: ${sankeyFilter.value}`}
+                            ? m.apps.filterDomainPrefix(maskHostOrDomain(sankeyFilter.value, privacyMode))
+                            : m.apps.filterEgressPrefix(sankeyFilter.value)}
                         </span>
                         <X className="h-3 w-3" />
                       </button>
@@ -572,7 +584,7 @@ export function AppsExplorerPage({
                         className={`cl-segment-item !h-[18px] !text-[10px] ${ruleFormat === 'yaml' ? 'cl-segment-item-active' : ''}`}
                         style={ruleFormat === 'yaml' ? { color: 'var(--cl-accent-primary)' } : undefined}
                       >
-                        YAML 规则
+                        {m.apps.yamlRules}
                       </button>
                       <button
                         type="button"
@@ -595,14 +607,14 @@ export function AppsExplorerPage({
                           }
                           className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
                         >
-                          全部展开
+                          {m.common.expandAll}
                         </button>
                         <button
                           type="button"
                           onClick={() => setAllExpanded([], false)}
                           className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
                         >
-                          全部收起
+                          {m.common.collapseAll}
                         </button>
                       </div>
                     )}
@@ -615,25 +627,26 @@ export function AppsExplorerPage({
                       style={{ borderColor: 'var(--cl-border-subtle)' }}
                     >
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">主域名 / 服务</th>
-                        <th className="px-4 py-2.5 text-right font-medium">总流量</th>
-                        <th className="px-4 py-2.5 text-right font-medium">占比</th>
-                        <th className="px-4 py-2.5 text-right font-medium">代理</th>
-                        <th className="px-4 py-2.5 text-right font-medium">直连</th>
-                        <th className="px-4 py-2.5 text-right font-medium">下行 / 上行 · 操作</th>
+                        <th className="px-4 py-2.5 font-medium">{m.apps.colDomainService}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colTotal}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colShare}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colProxy}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colDirect}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colDownUpAction}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--cl-border-subtle)]">
                       {filteredRootDomains.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="py-10 text-center text-xs text-[var(--cl-text-muted)]">
-                            {onlyMatch || sankeyFilter ? '当前筛选条件下无匹配明细条目' : '暂无访问网站明细'}
+                            {onlyMatch || sankeyFilter ? m.apps.emptyFilteredDomains : m.apps.emptyVisitedDomains}
                           </td>
                         </tr>
                       ) : (
                         filteredRootDomains.map((grp) => {
                           const open = !!expandedKeys[grp.root_domain]
                           const grpCopyKey = `grp:${grp.root_domain}`
+                          const grpTag = resolveServiceTag(grp.service_tag, grp.root_domain)
                           return (
                             <Fragment key={grp.root_domain}>
                               <tr
@@ -650,7 +663,7 @@ export function AppsExplorerPage({
                                     <span className="truncate font-mono font-semibold">
                                       {maskHostOrDomain(grp.root_domain, privacyMode)}
                                     </span>
-                                    {grp.service_tag && (
+                                    {grpTag && (
                                       <span
                                         className="inline-flex h-[18px] shrink-0 items-center rounded px-1.5 text-[10px] leading-none"
                                         style={{
@@ -658,11 +671,11 @@ export function AppsExplorerPage({
                                           color: 'var(--cl-accent-primary)',
                                         }}
                                       >
-                                        {grp.service_tag}
+                                        {grpTag}
                                       </span>
                                     )}
                                     <span className="shrink-0 font-mono text-[10px] text-[var(--cl-text-muted)]">
-                                      ({grp.subdomains.length} 项)
+                                      ({m.common.itemsCount(grp.subdomains.length)})
                                     </span>
                                   </div>
                                 </td>
@@ -697,14 +710,14 @@ export function AppsExplorerPage({
                                       }}
                                       className="inline-flex h-6 items-center gap-1 rounded border px-1.5 font-sans text-[10px] text-[var(--cl-text-muted)] transition hover:border-[var(--cl-border-focus)] hover:text-[var(--cl-accent-primary)]"
                                       style={{ borderColor: 'var(--cl-border-subtle)' }}
-                                      title="复制直连分流规则"
+                                      title={m.apps.copyDirectRuleTitle}
                                     >
                                       {copiedRuleKey === grpCopyKey ? (
                                         <Check className="h-3 w-3" style={{ color: 'var(--cl-status-success)' }} />
                                       ) : (
                                         <Copy className="h-3 w-3" />
                                       )}
-                                      规则
+                                      {m.common.ruleLabel}
                                     </button>
                                   </div>
                                 </td>
@@ -724,7 +737,7 @@ export function AppsExplorerPage({
                                         <div className="flex flex-wrap items-center gap-2">
                                           <span className="font-mono text-[var(--cl-text-primary)]">
                                             {sub.host === '*'
-                                              ? '* (低频零散子域名合并)'
+                                              ? m.apps.lowFreqSubdomainLabel
                                               : maskHostOrDomain(sub.host, privacyMode)}
                                           </span>
                                           <span
@@ -760,12 +773,12 @@ export function AppsExplorerPage({
                                                 color: 'var(--cl-status-warning)',
                                               }}
                                             >
-                                              兜底
+                                              {m.common.fallbackBadge}
                                             </span>
                                           )}
                                           {sub.rule && (
                                             <span className="font-mono text-[10px] text-[var(--cl-text-muted)]">
-                                              规则: {maskRuleText(sub.rule, privacyMode)}
+                                              {m.common.ruleLabel}: {maskRuleText(sub.rule, privacyMode)}
                                             </span>
                                           )}
                                         </div>
@@ -774,7 +787,7 @@ export function AppsExplorerPage({
                                         {formatBytes(sub.total_bytes)}
                                       </td>
                                       <td className="px-4 py-2 text-right font-mono text-[var(--cl-text-muted)] tabular-nums" colSpan={2}>
-                                        {formatNumber(sub.conn_count)} 连接
+                                        {formatNumber(sub.conn_count)} {m.common.connsCount(0).replace('0 ', '')}
                                       </td>
                                       <td className="px-4 py-2 text-right font-mono tabular-nums">
                                         <div className="inline-flex items-center justify-end gap-2">
@@ -787,14 +800,14 @@ export function AppsExplorerPage({
                                               onClick={() => void handleCopyRule(subCopyKey, sub.host)}
                                               className="inline-flex h-5 items-center gap-1 rounded border px-1.5 font-sans text-[10px] text-[var(--cl-text-muted)] transition hover:border-[var(--cl-border-focus)] hover:text-[var(--cl-accent-primary)]"
                                               style={{ borderColor: 'var(--cl-border-subtle)' }}
-                                              title="复制精确目标规则"
+                                              title={m.apps.copyExactRuleTitle}
                                             >
                                               {copiedRuleKey === subCopyKey ? (
                                                 <Check className="h-2.5 w-2.5" style={{ color: 'var(--cl-status-success)' }} />
                                               ) : (
                                                 <Copy className="h-2.5 w-2.5" />
                                               )}
-                                              复制规则
+                                              {m.apps.copyRuleBtn}
                                             </button>
                                           )}
                                         </div>
@@ -815,16 +828,17 @@ export function AppsExplorerPage({
             <>
               <div className="cl-card grid min-h-[96px] items-center gap-3 rounded-xl p-4 sm:grid-cols-4">
                 <div>
-                  <div className="text-xs text-[var(--cl-text-muted)]">网站主域名</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">{m.apps.domainRootLabel}</div>
                   <div className="mt-1 truncate font-mono text-lg font-bold">
                     {maskHostOrDomain(domainDetail.root_domain, privacyMode)}
                   </div>
                   <div className="mt-0.5 text-[11px]" style={{ color: 'var(--cl-accent-primary)' }}>
-                    {domainDetail.service_tag || '域名明细'}
+                    {resolveServiceTag(domainDetail.service_tag, domainDetail.root_domain) ||
+                      m.apps.domainDetailFallback}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--cl-text-muted)]">总消耗流量</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">{m.apps.domainTotalBytes}</div>
                   <div
                     className="mt-1 font-mono text-xl font-bold tabular-nums"
                     style={{ color: 'var(--cl-accent-primary)' }}
@@ -832,11 +846,11 @@ export function AppsExplorerPage({
                     {formatBytes(domainDetail.summary.total_bytes)}
                   </div>
                   <div className="mt-0.5 font-mono text-[11px] text-[var(--cl-text-muted)]">
-                    代理 {formatBytes(domainDetail.summary.proxy_bytes)}
+                    {m.common.proxy} {formatBytes(domainDetail.summary.proxy_bytes)}
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--cl-text-muted)]">下行 / 上行</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">{m.apps.downVsUp}</div>
                   <div
                     className="mt-1 font-mono text-sm font-semibold tabular-nums"
                     style={{ color: chartTheme.liveColors.down }}
@@ -851,18 +865,18 @@ export function AppsExplorerPage({
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--cl-text-muted)]">访问应用数</div>
+                  <div className="text-xs text-[var(--cl-text-muted)]">{m.apps.visitingAppsCount}</div>
                   <div className="mt-1 font-mono text-xl font-bold tabular-nums">
                     {domainDetail.summary.app_count}
                   </div>
                   <div className="mt-0.5 font-mono text-[11px] text-[var(--cl-text-muted)]">
-                    {formatNumber(domainDetail.summary.conn_count)} 次连接
+                    {formatNumber(domainDetail.summary.conn_count)} {m.apps.connsTimes(0).replace('0 ', '')}
                   </div>
                 </div>
               </div>
 
               <div className="cl-card rounded-xl p-4">
-                <div className="mb-2 text-xs font-semibold">各应用访问趋势</div>
+                <div className="mb-2 text-xs font-semibold">{m.apps.appTrendTitle}</div>
                 <EChartBox option={timelineOption} className="h-[240px] w-full" />
               </div>
 
@@ -872,7 +886,7 @@ export function AppsExplorerPage({
                   style={{ borderColor: 'var(--cl-border-subtle)' }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-sm font-semibold">访问该网站的应用列表（点击展开子域名）</h3>
+                    <h3 className="text-sm font-semibold">{m.apps.visitingAppsTitle}</h3>
                     {ruleToast && (
                       <span
                         className="rounded px-2 py-0.5 font-mono text-[11px]"
@@ -893,7 +907,7 @@ export function AppsExplorerPage({
                         className={`cl-segment-item !h-[18px] !text-[10px] ${ruleFormat === 'yaml' ? 'cl-segment-item-active' : ''}`}
                         style={ruleFormat === 'yaml' ? { color: 'var(--cl-accent-primary)' } : undefined}
                       >
-                        YAML 规则
+                        {m.apps.yamlRules}
                       </button>
                       <button
                         type="button"
@@ -916,14 +930,14 @@ export function AppsExplorerPage({
                           }
                           className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
                         >
-                          全部展开
+                          {m.common.expandAll}
                         </button>
                         <button
                           type="button"
                           onClick={() => setAllExpanded([], false)}
                           className="cl-btn-secondary !h-6 !px-2 !text-[11px]"
                         >
-                          全部收起
+                          {m.common.collapseAll}
                         </button>
                       </div>
                     )}
@@ -936,18 +950,18 @@ export function AppsExplorerPage({
                       style={{ borderColor: 'var(--cl-border-subtle)' }}
                     >
                       <tr>
-                        <th className="px-4 py-2.5 font-medium">应用进程</th>
-                        <th className="px-4 py-2.5 text-right font-medium">总流量</th>
-                        <th className="px-4 py-2.5 text-right font-medium">占比</th>
-                        <th className="px-4 py-2.5 text-right font-medium">代理</th>
-                        <th className="px-4 py-2.5 text-right font-medium">下行 / 上行 · 操作</th>
+                        <th className="px-4 py-2.5 font-medium">{m.apps.colProcess}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colTotal}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colShare}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colProxy}</th>
+                        <th className="px-4 py-2.5 text-right font-medium">{m.apps.colDownUpAction}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--cl-border-subtle)]">
                       {filteredDomainApps.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="py-10 text-center text-xs text-[var(--cl-text-muted)]">
-                            {onlyMatch ? '当前筛选条件下无 MATCH 兜底明细' : '暂无应用访问记录'}
+                            {onlyMatch ? m.apps.emptyFilteredApps : m.apps.emptyVisitingApps}
                           </td>
                         </tr>
                       ) : (
@@ -966,7 +980,7 @@ export function AppsExplorerPage({
                                     ) : (
                                       <ChevronRight className="h-3.5 w-3.5 text-[var(--cl-text-muted)]" />
                                     )}
-                                    <span>{appRow.process_display}</span>
+                                    <span>{resolveProcessName(appRow.process_display)}</span>
                                   </div>
                                 </td>
                                 <td
@@ -999,7 +1013,7 @@ export function AppsExplorerPage({
                                       <td className="py-2 pl-10 pr-4" colSpan={2}>
                                         <span className="font-mono">
                                           {sub.host === '*'
-                                            ? '* (低频零散子域名合并)'
+                                            ? m.apps.lowFreqSubdomainLabel
                                             : maskHostOrDomain(sub.host, privacyMode)}
                                         </span>
                                         <span
@@ -1024,7 +1038,7 @@ export function AppsExplorerPage({
                                               color: 'var(--cl-status-warning)',
                                             }}
                                           >
-                                            兜底
+                                            {m.common.fallbackBadge}
                                           </span>
                                         )}
                                       </td>
@@ -1042,14 +1056,14 @@ export function AppsExplorerPage({
                                               onClick={() => void handleCopyRule(subCopyKey, sub.host)}
                                               className="inline-flex h-5 items-center gap-1 rounded border px-1.5 font-sans text-[10px] text-[var(--cl-text-muted)] transition hover:border-[var(--cl-border-focus)] hover:text-[var(--cl-accent-primary)]"
                                               style={{ borderColor: 'var(--cl-border-subtle)' }}
-                                              title="复制精确目标规则"
+                                              title={m.apps.copyExactRuleTitle}
                                             >
                                               {copiedRuleKey === subCopyKey ? (
                                                 <Check className="h-2.5 w-2.5" style={{ color: 'var(--cl-status-success)' }} />
                                               ) : (
                                                 <Copy className="h-2.5 w-2.5" />
                                               )}
-                                              复制规则
+                                              {m.apps.copyRuleBtn}
                                             </button>
                                           )}
                                         </div>
@@ -1068,7 +1082,7 @@ export function AppsExplorerPage({
             </>
           ) : (
             <div className="cl-card flex h-64 items-center justify-center rounded-xl text-xs text-[var(--cl-text-muted)] lg:min-h-[934px]">
-              请在左侧选择应用或等待流量数据上报
+              {m.apps.selectAppPrompt}
             </div>
           )}
         </div>
