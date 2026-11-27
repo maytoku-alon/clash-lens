@@ -130,7 +130,7 @@
   html {
     background-color: var(--cl-bg-page);
     font-size: var(--cl-font-size-base, 14px);
-    scrollbar-gutter: stable;
+    overflow-y: scroll;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;

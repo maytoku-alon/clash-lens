@@ -25,20 +25,21 @@ func SPAHandler() http.Handler {
 			return
 		}
 		clean := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
-		if clean != "" && clean != "." {
+		if clean != "" && clean != "." && clean != "index.html" {
 			if f, err := sub.Open(clean); err == nil {
 				_ = f.Close()
 				fileServer.ServeHTTP(w, r)
 				return
 			}
 		}
-		// Fallback to SPA index.html
+		// Fallback to SPA index.html (never cache so fresh asset hashes load immediately after rollout)
 		indexBytes, err := fs.ReadFile(sub, "index.html")
 		if err != nil {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(indexBytes)
 	})

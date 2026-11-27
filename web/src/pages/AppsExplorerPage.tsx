@@ -322,9 +322,12 @@ export function AppsExplorerPage({
       </div>
 
       {/* Master-Detail Split Layout */}
-      <div className="flex flex-col gap-4 lg:flex-row">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         {/* Left List */}
-        <div className="cl-card flex w-full shrink-0 flex-col rounded-xl p-3 lg:w-[330px]">
+        <div
+          data-testid="apps-left-card"
+          className="cl-card flex w-full shrink-0 flex-col rounded-xl p-3 lg:h-[934px] lg:w-[330px]"
+        >
           <div className="relative mb-3">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--cl-text-muted)]" />
             <input
@@ -336,7 +339,7 @@ export function AppsExplorerPage({
             />
           </div>
 
-          <div className="cl-list-stack cl-thin-scroll max-h-[680px] space-y-1.5 overflow-y-auto pr-1">
+          <div className="cl-thin-scroll flex max-h-[680px] min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none">
             {mode === 'app' ? (
               !appsList || appsList.items.length === 0 ? (
                 <div className="py-8 text-center text-xs text-[var(--cl-text-muted)]">暂无应用数据</div>
@@ -347,19 +350,20 @@ export function AppsExplorerPage({
                     <button
                       type="button"
                       key={item.process_display}
+                      data-testid="apps-left-item"
                       onClick={() => setSelectedApp(item.process_display)}
-                      className="w-full cursor-pointer rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
+                      className="flex h-[74px] w-full shrink-0 cursor-pointer flex-col justify-between rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
                       style={{
                         borderColor: active ? 'var(--cl-border-focus)' : 'var(--cl-border-subtle)',
                         backgroundColor: active ? 'var(--cl-accent-soft)' : 'var(--cl-bg-sidebar)',
                       }}
                     >
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex h-5 items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate text-xs font-semibold">{item.process_display}</span>
                           {item.tun_bytes > 0 && (
                             <span
-                              className="rounded px-1 py-0.5 font-mono text-[9px]"
+                              className="shrink-0 rounded px-1 py-0.5 font-mono text-[9px] leading-none"
                               style={{
                                 backgroundColor: 'var(--cl-accent-soft)',
                                 color: 'var(--cl-accent-primary)',
@@ -376,14 +380,14 @@ export function AppsExplorerPage({
                           {formatBytes(item.total_bytes)}
                         </span>
                       </div>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--cl-text-muted)]">
+                      <div className="flex h-4 items-center justify-between gap-2 text-[11px] text-[var(--cl-text-muted)]">
                         <span className="truncate font-mono">
                           {item.top_domains.slice(0, 2).map((d) => maskHostOrDomain(d.root_domain, privacyMode)).join(', ') || '-'}
                         </span>
                         <span className="shrink-0 font-mono">{item.domain_count} 域名</span>
                       </div>
                       <div
-                        className="mt-1.5 h-1 w-full overflow-hidden rounded-full"
+                        className="h-1 w-full overflow-hidden rounded-full"
                         style={{ backgroundColor: 'var(--cl-border-subtle)' }}
                       >
                         <div
@@ -407,14 +411,15 @@ export function AppsExplorerPage({
                   <button
                     type="button"
                     key={item.root_domain}
+                    data-testid="apps-left-item"
                     onClick={() => setSelectedDomain(item.root_domain)}
-                    className="w-full cursor-pointer rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
+                    className="flex h-[74px] w-full shrink-0 cursor-pointer flex-col justify-between rounded-lg border p-2.5 text-left transition hover:border-[var(--cl-border-focus)]"
                     style={{
                       borderColor: active ? 'var(--cl-border-focus)' : 'var(--cl-border-subtle)',
                       backgroundColor: active ? 'var(--cl-accent-soft)' : 'var(--cl-bg-sidebar)',
                     }}
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex h-5 items-center justify-between gap-2">
                       <span className="truncate font-mono text-xs font-semibold">
                         {maskHostOrDomain(item.root_domain, privacyMode)}
                       </span>
@@ -425,14 +430,14 @@ export function AppsExplorerPage({
                         {formatBytes(item.total_bytes)}
                       </span>
                     </div>
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--cl-text-muted)]">
+                    <div className="flex h-4 items-center justify-between gap-2 text-[11px] text-[var(--cl-text-muted)]">
                       <span className="truncate">
                         {item.service_tag || item.top_apps.map((a) => a.process_display).join(', ')}
                       </span>
                       <span className="shrink-0 font-mono">{item.app_count} 应用</span>
                     </div>
                     <div
-                      className="mt-1.5 h-1 w-full overflow-hidden rounded-full"
+                      className="h-1 w-full overflow-hidden rounded-full"
                       style={{ backgroundColor: 'var(--cl-border-subtle)' }}
                     >
                       <div
@@ -455,7 +460,7 @@ export function AppsExplorerPage({
           {mode === 'app' && appDetail ? (
             <>
               {/* App Summary Header */}
-              <div className="cl-card grid gap-3 rounded-xl p-4 sm:grid-cols-4">
+              <div className="cl-card grid min-h-[96px] items-center gap-3 rounded-xl p-4 sm:grid-cols-4">
                 <div>
                   <div className="text-xs text-[var(--cl-text-muted)]">应用总流量</div>
                   <div className="mt-1 font-mono text-xl font-bold tabular-nums">
@@ -526,9 +531,9 @@ export function AppsExplorerPage({
               </div>
 
               {/* Expandable Root Domains -> Subdomains Table */}
-              <div className="cl-card overflow-hidden rounded-xl">
+              <div data-testid="apps-detail-table-card" className="cl-card flex flex-col overflow-hidden rounded-xl">
                 <div
-                  className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3"
+                  className="flex min-h-[50px] flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5"
                   style={{ borderColor: 'var(--cl-border-subtle)' }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
@@ -603,10 +608,10 @@ export function AppsExplorerPage({
                     )}
                   </div>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="cl-thin-scroll h-[460px] overflow-x-auto overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead
-                      className="border-b bg-[var(--cl-bg-sidebar)] text-[var(--cl-text-muted)]"
+                      className="sticky top-0 z-10 border-b bg-[var(--cl-bg-sidebar)] text-[var(--cl-text-muted)]"
                       style={{ borderColor: 'var(--cl-border-subtle)' }}
                     >
                       <tr>
@@ -808,7 +813,7 @@ export function AppsExplorerPage({
             </>
           ) : mode === 'domain' && domainDetail ? (
             <>
-              <div className="cl-card grid gap-3 rounded-xl p-4 sm:grid-cols-4">
+              <div className="cl-card grid min-h-[96px] items-center gap-3 rounded-xl p-4 sm:grid-cols-4">
                 <div>
                   <div className="text-xs text-[var(--cl-text-muted)]">网站主域名</div>
                   <div className="mt-1 truncate font-mono text-lg font-bold">
@@ -861,9 +866,9 @@ export function AppsExplorerPage({
                 <EChartBox option={timelineOption} className="h-[240px] w-full" />
               </div>
 
-              <div className="cl-card overflow-hidden rounded-xl">
+              <div data-testid="apps-detail-table-card" className="cl-card flex flex-col overflow-hidden rounded-xl">
                 <div
-                  className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3"
+                  className="flex min-h-[50px] flex-wrap items-center justify-between gap-2 border-b px-4 py-2.5"
                   style={{ borderColor: 'var(--cl-border-subtle)' }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
@@ -924,10 +929,10 @@ export function AppsExplorerPage({
                     )}
                   </div>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="cl-thin-scroll h-[460px] overflow-x-auto overflow-y-auto">
                   <table className="w-full text-left text-xs">
                     <thead
-                      className="border-b bg-[var(--cl-bg-sidebar)] text-[var(--cl-text-muted)]"
+                      className="sticky top-0 z-10 border-b bg-[var(--cl-bg-sidebar)] text-[var(--cl-text-muted)]"
                       style={{ borderColor: 'var(--cl-border-subtle)' }}
                     >
                       <tr>
@@ -1062,7 +1067,7 @@ export function AppsExplorerPage({
               </div>
             </>
           ) : (
-            <div className="cl-card flex h-64 items-center justify-center rounded-xl text-xs text-[var(--cl-text-muted)]">
+            <div className="cl-card flex h-64 items-center justify-center rounded-xl text-xs text-[var(--cl-text-muted)] lg:min-h-[934px]">
               请在左侧选择应用或等待流量数据上报
             </div>
           )}

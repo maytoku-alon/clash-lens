@@ -373,10 +373,9 @@ export function LiveMonitorPage({
     }
   }
 
-  const maxProcEma = useMemo(() => {
+  const maxProcLiveBps = useMemo(() => {
     let maxVal = 4096
     for (const r of procRows) {
-      if (r.emaBps > maxVal) maxVal = r.emaBps
       if (r.totalBps > maxVal) maxVal = r.totalBps
     }
     return maxVal
@@ -614,11 +613,10 @@ export function LiveMonitorPage({
           ) : (
             <div className="cl-list-stack space-y-2">
               {procRows.map((p) => {
-                const effectiveBps = p.totalBps === 0 && p.emaBps < 128 ? 0 : (p.emaBps || p.totalBps)
                 const pct =
-                  p.idle || effectiveBps <= 0
+                  p.idle || p.totalBps <= 0
                     ? 0
-                    : Math.max(4, Math.min(100, Math.round((effectiveBps / maxProcEma) * 100)))
+                    : Math.max(4, Math.min(100, Math.round((p.totalBps / maxProcLiveBps) * 100)))
                 return (
                   <button
                     type="button"
