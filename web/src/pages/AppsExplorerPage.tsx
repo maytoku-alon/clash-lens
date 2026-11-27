@@ -638,21 +638,21 @@ export function AppsExplorerPage({
                             <Fragment key={grp.root_domain}>
                               <tr
                                 onClick={() => toggleExpand(grp.root_domain)}
-                                className="cursor-pointer transition hover:bg-[var(--cl-bg-surface-hover)]"
+                                className="h-[40px] cursor-pointer transition hover:bg-[var(--cl-bg-surface-hover)]"
                               >
-                                <td className="px-4 py-2.5">
-                                  <div className="flex items-center gap-2">
+                                <td className="px-4 py-2">
+                                  <div className="flex h-6 items-center gap-2">
                                     {open ? (
-                                      <ChevronDown className="h-3.5 w-3.5 text-[var(--cl-text-muted)]" />
+                                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--cl-text-muted)]" />
                                     ) : (
-                                      <ChevronRight className="h-3.5 w-3.5 text-[var(--cl-text-muted)]" />
+                                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--cl-text-muted)]" />
                                     )}
-                                    <span className="font-mono font-semibold">
+                                    <span className="truncate font-mono font-semibold">
                                       {maskHostOrDomain(grp.root_domain, privacyMode)}
                                     </span>
                                     {grp.service_tag && (
                                       <span
-                                        className="rounded px-1.5 py-0.5 text-[10px]"
+                                        className="inline-flex h-[18px] shrink-0 items-center rounded px-1.5 text-[10px] leading-none"
                                         style={{
                                           backgroundColor: 'var(--cl-accent-soft)',
                                           color: 'var(--cl-accent-primary)',
@@ -661,7 +661,7 @@ export function AppsExplorerPage({
                                         {grp.service_tag}
                                       </span>
                                     )}
-                                    <span className="font-mono text-[10px] text-[var(--cl-text-muted)]">
+                                    <span className="shrink-0 font-mono text-[10px] text-[var(--cl-text-muted)]">
                                       ({grp.subdomains.length} 项)
                                     </span>
                                   </div>

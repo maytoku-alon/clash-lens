@@ -376,13 +376,13 @@ export function NodesQuotaPage({
                   data.rules.map((r, i) => {
                     const isMatch = isMatchFallbackRule(r.rule)
                     return (
-                      <tr key={`${r.rule}-${r.route_type}-${i}`} className="hover:bg-[var(--cl-bg-surface-hover)]">
-                        <td className="max-w-[240px] px-4 py-2 font-mono">
-                          <div className="flex items-center gap-1.5">
+                      <tr key={`${r.rule}-${r.route_type}-${i}`} className="h-[34px] hover:bg-[var(--cl-bg-surface-hover)]">
+                        <td className="max-w-[240px] px-4 py-1.5 font-mono">
+                          <div className="flex h-5 items-center gap-1.5">
                             <span className="truncate">{maskRuleText(r.rule, privacyMode)}</span>
                             {isMatch && (
                               <span
-                                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                                className="inline-flex h-[18px] shrink-0 items-center rounded px-1.5 text-[10px] font-semibold leading-none"
                                 style={{
                                   backgroundColor: 'rgba(245, 158, 11, 0.14)',
                                   color: 'var(--cl-status-warning)',
@@ -393,9 +393,9 @@ export function NodesQuotaPage({
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-2">
+                        <td className="px-4 py-1.5">
                           <span
-                            className="rounded px-1.5 py-0.5 font-mono text-[10px]"
+                            className="inline-flex h-[18px] items-center rounded px-1.5 font-mono text-[10px] leading-none"
                             style={{
                               backgroundColor: 'var(--cl-bg-surface-hover)',
                               color:
@@ -409,10 +409,10 @@ export function NodesQuotaPage({
                             {r.route_type}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-right font-mono font-semibold tabular-nums">
+                        <td className="px-4 py-1.5 text-right font-mono font-semibold tabular-nums">
                           {formatBytes(r.total_bytes)}
                         </td>
-                        <td className="px-4 py-2 text-right font-mono text-[var(--cl-text-muted)] tabular-nums">
+                        <td className="px-4 py-1.5 text-right font-mono text-[var(--cl-text-muted)] tabular-nums">
                           {formatNumber(r.conn_count)}
                         </td>
                       </tr>
