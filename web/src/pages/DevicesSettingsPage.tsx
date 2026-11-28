@@ -1240,7 +1240,7 @@ export function DevicesSettingsPage({
 
       {/* Two-step Prune Confirmation Modal */}
       {confirmPruneOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-xs">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-xs">
           <div className="cl-popover w-full max-w-md rounded-xl border p-5 shadow-2xl">
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" style={{ color: 'var(--cl-status-warning)' }} />

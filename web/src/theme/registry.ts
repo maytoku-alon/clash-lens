@@ -1,6 +1,10 @@
 import { auroraMeshTheme } from './themes/auroraMesh'
 import { defaultTheme } from './themes/default'
+import { graphiteMonolithTheme } from './themes/graphiteMonolith'
+import { liquidPearlTheme } from './themes/liquidPearl'
 import { obsidianPlumTheme } from './themes/obsidianPlum'
+import { sentinelHudTheme } from './themes/sentinelHud'
+import { swissPosterTheme } from './themes/swissPoster'
 import type { ThemeDefinition } from './types'
 
 class ThemeRegistry {
@@ -33,4 +37,12 @@ class ThemeRegistry {
   }
 }
 
-export const themeRegistry = new ThemeRegistry([defaultTheme, obsidianPlumTheme, auroraMeshTheme])
+export const themeRegistry = new ThemeRegistry([
+  defaultTheme,
+  obsidianPlumTheme,
+  auroraMeshTheme,
+  graphiteMonolithTheme,
+  sentinelHudTheme,
+  swissPosterTheme,
+  liquidPearlTheme,
+])

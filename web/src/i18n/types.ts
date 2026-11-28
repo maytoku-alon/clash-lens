@@ -89,6 +89,16 @@ export interface TranslationMessages {
   appearance: {
     buttonTitle: string
     themeStyle: string
+    openGallery: string
+    galleryTitle: string
+    gallerySubtitle: string
+    previewDark: string
+    previewLight: string
+    pinned: string
+    pinQuick: string
+    inUse: string
+    applyTheme: string
+    pinnedCountHint: string
     overviewLayout: string
     classicLayout: string
     bentoLayout: string

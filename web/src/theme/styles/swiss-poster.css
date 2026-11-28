@@ -1,0 +1,159 @@
+/* ═════════════════════════ Swiss Poster ═════════════════════════
+ * 设计语言：国际主义平面海报。零圆角、零阴影、粗黑规线、超大数字、单一布劳恩橙。
+ * 约束：border 宽度为主题内静态值，hover / active 只切换颜色，不改变任何尺寸。
+ */
+[data-theme="swiss-poster"][data-mode="dark"]  { --sw-ink: #F2EFE6; --sw-paper: #0C0C0B; }
+[data-theme="swiss-poster"][data-mode="light"] { --sw-ink: #141414; --sw-paper: #F7F5EF; }
+
+/* 全站直角（保留 rounded-full 的状态圆点） */
+[data-theme="swiss-poster"] .rounded-xl,
+[data-theme="swiss-poster"] .rounded-lg,
+[data-theme="swiss-poster"] .rounded-md,
+[data-theme="swiss-poster"] .cl-card,
+[data-theme="swiss-poster"] .cl-pill,
+[data-theme="swiss-poster"] .cl-segment,
+[data-theme="swiss-poster"] .cl-segment-item,
+[data-theme="swiss-poster"] .cl-btn-primary,
+[data-theme="swiss-poster"] .cl-btn-secondary,
+[data-theme="swiss-poster"] .cl-btn-accent,
+[data-theme="swiss-poster"] .cl-icon-btn,
+[data-theme="swiss-poster"] .cl-input,
+[data-theme="swiss-poster"] .cl-nav-item,
+[data-theme="swiss-poster"] .cl-brand-mark,
+[data-theme="swiss-poster"] .cl-live-badge,
+[data-theme="swiss-poster"] .cl-popover { border-radius: 0; }
+
+/* 卡片：平涂 + 4px 墨黑上规线；第一张 KPI 用橙色规线做视觉锚点 */
+[data-theme="swiss-poster"] .cl-card {
+  border: 1px solid var(--cl-border-subtle);
+  border-top: 4px solid var(--sw-ink);
+  box-shadow: none;
+}
+[data-theme="swiss-poster"] .cl-kpi-grid > .cl-card:nth-child(1) { border-top-color: var(--cl-accent-primary); }
+[data-theme="swiss-poster"] .cl-kpi-grid > .cl-card { padding: 1.05rem 1.25rem 1.2rem; }
+
+/* KPI：标签是小号粗体大写，数字随容器宽度放大到海报级 */
+[data-theme="swiss-poster"] .cl-kpi-grid > .cl-card > div:first-child {
+  color: var(--cl-text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+[data-theme="swiss-poster"] .cl-kpi-value {
+  margin-top: 0.85rem;
+  font-family: var(--cl-font-sans);
+  font-size: clamp(1.9rem, 3.1cqw, 2.9rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+  white-space: nowrap;
+}
+[data-theme="swiss-poster"] h2 {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* 侧栏：与页面同色，右侧 4px 墨黑竖规线；导航大号粗体大写，激活 = 反白（墨底纸字） */
+[data-theme="swiss-poster"] aside.cl-sidebar {
+  background-color: var(--cl-bg-sidebar);
+  border-right: 4px solid var(--sw-ink);
+}
+[data-theme="swiss-poster"] .cl-brand-mark {
+  background-color: var(--cl-accent-primary) !important;
+  border-color: transparent !important;
+  color: #0C0C0B !important;
+  box-shadow: none;
+}
+[data-theme="swiss-poster"] .cl-brand-text > div:first-child {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+[data-theme="swiss-poster"] .cl-nav-item {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+[data-theme="swiss-poster"] .cl-nav-active {
+  background-color: var(--sw-ink) !important;
+  color: var(--sw-paper) !important;
+}
+
+/* 顶栏：与页面同色 + 3px 墨黑下规线 */
+[data-theme="swiss-poster"] header.cl-topbar {
+  background-color: var(--cl-bg-page);
+  border-bottom: 3px solid var(--sw-ink);
+}
+
+/* 分段 / 胶囊：2px 墨线框，激活反白 */
+[data-theme="swiss-poster"] .cl-segment {
+  gap: 0;
+  padding: 0;
+  border: 2px solid var(--sw-ink);
+  background-color: transparent;
+}
+[data-theme="swiss-poster"] .cl-segment-item { height: 24px; font-weight: 700; letter-spacing: 0.02em; }
+[data-theme="swiss-poster"] .cl-segment-item-active {
+  background-color: var(--sw-ink);
+  color: var(--sw-paper) !important;
+  box-shadow: none;
+}
+[data-theme="swiss-poster"] .cl-pill { border: 2px solid var(--sw-ink); background-color: transparent; font-weight: 700; }
+[data-theme="swiss-poster"] .cl-pill-active {
+  background-color: var(--sw-ink);
+  color: var(--sw-paper) !important;
+}
+[data-theme="swiss-poster"] .cl-btn-secondary,
+[data-theme="swiss-poster"] .cl-icon-btn,
+[data-theme="swiss-poster"] .cl-live-badge { border: 2px solid var(--sw-ink); box-shadow: none; }
+[data-theme="swiss-poster"] .cl-input { border-width: 0 0 2px 0; border-color: var(--sw-ink); background-color: transparent; }
+
+/* 主按钮：橙底黑字，hover 反白 */
+[data-theme="swiss-poster"] .cl-btn-primary,
+[data-theme="swiss-poster"][data-mode="dark"] .cl-btn-primary,
+[data-theme="swiss-poster"][data-mode="light"] .cl-btn-primary {
+  background-color: var(--cl-accent-primary);
+  border: 2px solid var(--sw-ink);
+  color: #0C0C0B;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+[data-theme="swiss-poster"][data-mode="light"] .cl-btn-primary { color: #FFFFFF; }
+[data-theme="swiss-poster"] .cl-btn-primary:hover,
+[data-theme="swiss-poster"][data-mode="dark"] .cl-btn-primary:hover,
+[data-theme="swiss-poster"][data-mode="light"] .cl-btn-primary:hover {
+  background-color: var(--sw-ink);
+  border-color: var(--sw-ink);
+  color: var(--sw-paper);
+}
+
+/* 弹层：2px 墨线框 + 6px 硬投影 */
+[data-theme="swiss-poster"] .cl-popover {
+  background-color: var(--cl-bg-surface);
+  border: 2px solid var(--sw-ink);
+  box-shadow: 6px 6px 0 var(--sw-ink);
+}
+
+/* 进度条：8px 平涂，直角 */
+[data-theme="swiss-poster"] .cl-progress-fill { background: var(--cl-accent-primary) !important; border-radius: 0 !important; }
+[data-theme="swiss-poster"] div:has(> .cl-progress-fill) { border-radius: 0 !important; height: 8px !important; }
+
+/* 去框 hairline 列表 */
+[data-theme="swiss-poster"] .cl-list-stack { gap: 0; }
+[data-theme="swiss-poster"] .cl-list-stack > * + * { margin-top: 0; }
+[data-theme="swiss-poster"] .cl-list-item {
+  border-width: 0;
+  border-bottom: 1px solid var(--cl-border-subtle);
+  border-radius: 0;
+  background-color: transparent;
+  padding-inline: 0.4rem;
+}
+[data-theme="swiss-poster"] .cl-list-item:last-child { border-bottom: 0; }
+[data-theme="swiss-poster"] .cl-list-item:hover { background-color: var(--cl-bg-surface-hover); }

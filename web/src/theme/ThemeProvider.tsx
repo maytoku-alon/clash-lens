@@ -14,6 +14,8 @@ const STORAGE_THEME_ID = 'clashlens_theme_id'
 const STORAGE_COLOR_MODE = 'clashlens_color_mode'
 const STORAGE_LAYOUT = 'clashlens_layout'
 const STORAGE_PRIVACY_MODE = 'clashlens_privacy_mode'
+const STORAGE_PINNED_THEMES = 'clashlens_pinned_themes'
+const DEFAULT_PINNED_THEMES = ['default', 'obsidian-plum', 'aurora-mesh']
 const LEGACY_COLOR_MODE_KEY = 'clashlens_theme'
 
 interface ThemeContextValue {
@@ -25,6 +27,9 @@ interface ThemeContextValue {
   privacyMode: boolean
   tokens: ThemeTokens
   availableThemes: ThemeDefinition[]
+  pinnedThemeIds: string[]
+  isThemePinned: (id: string) => boolean
+  togglePinnedTheme: (id: string) => void
   setThemeId: (id: string) => void
   setColorMode: (mode: ColorMode) => void
   toggleColorMode: () => void
@@ -39,6 +44,24 @@ function readInitialPrivacyMode(): boolean {
   } catch {
     return false
   }
+}
+
+function readInitialPinnedThemes(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_PINNED_THEMES)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        const valid = parsed.filter((id): id is string => typeof id === 'string' && themeRegistry.has(id))
+        if (valid.length > 0) {
+          return Array.from(new Set(valid))
+        }
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return DEFAULT_PINNED_THEMES.filter((id) => themeRegistry.has(id))
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
@@ -143,6 +166,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [colorMode, setColorModeState] = useState<ColorMode>(() => readInitialColorMode())
   const [layout, setLayoutState] = useState<LayoutPreset>(() => readInitialLayout(themeId))
   const [privacyMode, setPrivacyModeState] = useState<boolean>(() => readInitialPrivacyMode())
+  const [pinnedThemeIds, setPinnedThemeIds] = useState<string[]>(() => readInitialPinnedThemes())
 
   const theme = useMemo(() => themeRegistry.get(themeId), [themeId])
   const tokens = useMemo(() => theme.modes[colorMode], [theme, colorMode])
@@ -167,6 +191,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       // ignore storage errors
     }
   }, [privacyMode])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_PINNED_THEMES, JSON.stringify(pinnedThemeIds))
+    } catch {
+      // ignore storage errors
+    }
+  }, [pinnedThemeIds])
+
+  const isThemePinned = useCallback(
+    (id: string) => pinnedThemeIds.includes(id),
+    [pinnedThemeIds],
+  )
+
+  const togglePinnedTheme = useCallback((id: string) => {
+    if (!themeRegistry.has(id)) return
+    setPinnedThemeIds((prev) => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) return prev
+        return prev.filter((item) => item !== id)
+      }
+      return [...prev, id]
+    })
+  }, [])
 
   const setThemeId = useCallback((id: string) => {
     if (themeRegistry.has(id)) {
@@ -204,6 +252,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       privacyMode,
       tokens,
       availableThemes,
+      pinnedThemeIds,
+      isThemePinned,
+      togglePinnedTheme,
       setThemeId,
       setColorMode,
       toggleColorMode,
@@ -218,6 +269,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       privacyMode,
       tokens,
       availableThemes,
+      pinnedThemeIds,
+      isThemePinned,
+      togglePinnedTheme,
       setThemeId,
       setColorMode,
       toggleColorMode,

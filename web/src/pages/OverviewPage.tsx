@@ -184,7 +184,7 @@ export function OverviewPage({
                 </span>
               )}
             </div>
-            <div className="mt-2 font-mono text-2xl font-bold tracking-tight tabular-nums">
+            <div className="cl-kpi-value mt-2 font-mono text-2xl font-bold tracking-tight tabular-nums">
               {formatBytes(overview?.today_bytes)}
             </div>
             <div className="mt-3">
@@ -212,7 +212,7 @@ export function OverviewPage({
                 {m.overview.onlineDevices(overview?.online_devices ?? 0, overview?.total_devices ?? 0)}
               </span>
             </div>
-            <div className="mt-2 font-mono text-2xl font-bold tracking-tight tabular-nums">
+            <div className="cl-kpi-value mt-2 font-mono text-2xl font-bold tracking-tight tabular-nums">
               {formatBytes(overview?.month_bytes)}
             </div>
             {hasQuota && overview ? (

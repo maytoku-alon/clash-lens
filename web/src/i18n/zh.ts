@@ -76,7 +76,17 @@ export const zhMessages: TranslationMessages = {
   },
   appearance: {
     buttonTitle: '外观主题与布局',
-    themeStyle: '主题风格',
+    themeStyle: '快捷主题',
+    openGallery: '打开主题库与快捷展示',
+    galleryTitle: '主题库 · 预览与快捷展示配置',
+    gallerySubtitle: '支持深/浅色双模式实时微缩预览，可将心仪主题固定到右上角快捷列表',
+    previewDark: '暗色预览',
+    previewLight: '浅色预览',
+    pinned: '已固定快捷',
+    pinQuick: '固定到快捷',
+    inUse: '当前使用中',
+    applyTheme: '立即使用',
+    pinnedCountHint: '已固定主题会直接展示在顶栏调色板快捷列表中（至少保留 1 个）',
     overviewLayout: '总览大屏布局',
     classicLayout: '经典布局',
     bentoLayout: 'Bento 宽屏',
@@ -92,11 +102,27 @@ export const zhMessages: TranslationMessages = {
       },
       'obsidian-plum': {
         name: 'Obsidian Plum',
-        description: 'Claude Code 极简去框骨架 · 暗夜灰紫 / 暖纸烟紫',
+        description: '极简去框骨架 · 暗夜灰紫 / 暖纸烟紫',
       },
       'aurora-mesh': {
-        name: '极光暗黑',
+        name: '极光暗黑 / 雾青极光',
         description: '弥散极光背景 · 磨砂玻璃卡片与渐变发光图表',
+      },
+      'graphite-monolith': {
+        name: 'Graphite Monolith · 工业曜石',
+        description: '冷银炭黑与低眩光雾灰，克制冷静的监控台秩序感',
+      },
+      'sentinel-hud': {
+        name: 'Sentinel HUD · 战术雷达',
+        description: '炭黑底板 · 酸绿刻度角标、LED 分段进度与扫描光束',
+      },
+      'swiss-poster': {
+        name: 'Swiss Poster · 瑞士海报',
+        description: '超大字号 · 粗黑规线、布劳恩橙、零圆角零阴影',
+      },
+      'liquid-pearl': {
+        name: 'Liquid Pearl · 液态珍珠',
+        description: '悬浮玻璃 Dock 导航 · 珍珠白毛玻璃与流动光斑',
       },
     },
   },

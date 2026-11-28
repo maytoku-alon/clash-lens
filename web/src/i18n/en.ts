@@ -76,7 +76,17 @@ export const enMessages: TranslationMessages = {
   },
   appearance: {
     buttonTitle: 'Appearance, Layout & Language',
-    themeStyle: 'Theme Preset',
+    themeStyle: 'Quick Themes',
+    openGallery: 'Open Theme Gallery',
+    galleryTitle: 'Theme Gallery · Live Previews & Quick Pin',
+    gallerySubtitle: 'Preview dark & light palettes side by side and pin favorites to the top bar menu',
+    previewDark: 'Dark Preview',
+    previewLight: 'Light Preview',
+    pinned: 'Pinned',
+    pinQuick: 'Pin Quick',
+    inUse: 'Active',
+    applyTheme: 'Apply Theme',
+    pinnedCountHint: 'Pinned themes appear in the quick palette popover (minimum 1 theme)',
     overviewLayout: 'Overview Layout',
     classicLayout: 'Classic',
     bentoLayout: 'Bento Grid',
@@ -97,6 +107,22 @@ export const enMessages: TranslationMessages = {
       'aurora-mesh': {
         name: 'Aurora Mesh',
         description: 'Ambient aurora gradient · Frosted glass cards & glow charts',
+      },
+      'graphite-monolith': {
+        name: 'Graphite Monolith',
+        description: 'Cold slate charcoal & low-glare mist gray studio order',
+      },
+      'sentinel-hud': {
+        name: 'Sentinel HUD',
+        description: 'Tactical radar · Acid-lime corner brackets, LED meters & sweep beam',
+      },
+      'swiss-poster': {
+        name: 'Swiss Poster',
+        description: 'International style · Bold black rules, Braun orange, 0px corners',
+      },
+      'liquid-pearl': {
+        name: 'Liquid Pearl',
+        description: 'Floating glass Dock navigation · Pearlescent frosted glass & drifting orbs',
       },
     },
   },

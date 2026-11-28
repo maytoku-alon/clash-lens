@@ -134,18 +134,18 @@ export function LayoutShell({
   }
 
   return (
-    <div className="flex min-h-screen text-[var(--cl-text-primary)]">
+    <div className="cl-shell flex min-h-screen text-[var(--cl-text-primary)]">
       {/* Left Navigation Rail */}
       {!kiosk && (
         <aside
-          className={`cl-surface sticky top-0 flex h-screen shrink-0 flex-col justify-between border-r py-5 transition-[width] duration-200 ${
+          className={`cl-surface cl-sidebar sticky top-0 flex h-screen shrink-0 flex-col justify-between border-r py-5 transition-[width] duration-200 ${
             sidebarCollapsed ? 'w-16 px-2' : 'w-[220px] px-3.5'
           }`}
         >
           <div>
-            <div className={`mb-7 flex items-center ${sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-2'}`}>
+            <div className={`cl-brand mb-7 flex items-center ${sidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-2'}`}>
               <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm"
+                className="cl-brand-mark flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-sm"
                 style={{
                   backgroundColor: 'var(--cl-accent-soft)',
                   color: 'var(--cl-accent-primary)',
@@ -155,7 +155,7 @@ export function LayoutShell({
                 <Activity className="h-[18px] w-[18px]" strokeWidth={2} />
               </div>
               {!sidebarCollapsed && (
-                <div className="min-w-0 overflow-hidden whitespace-nowrap">
+                <div className="cl-brand-text min-w-0 overflow-hidden whitespace-nowrap">
                   <div className="text-[15px] font-bold tracking-tight">ClashLens</div>
                   <div className="text-xs text-[var(--cl-text-muted)]">
                     {localMode ? m.nav.localMode : m.nav.trafficMonitor}
@@ -164,7 +164,7 @@ export function LayoutShell({
               )}
             </div>
 
-            <nav className="space-y-2">
+            <nav className="cl-nav space-y-2">
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon
                 const active = activeTab === item.key
@@ -176,7 +176,7 @@ export function LayoutShell({
                     onClick={() => onTabChange(item.key)}
                     title={sidebarCollapsed ? label : undefined}
                     aria-label={label}
-                    className={`flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg text-[15px] font-medium leading-none tracking-[-0.01em] transition ${
+                    className={`cl-nav-item flex h-11 w-full cursor-pointer items-center gap-3 rounded-lg text-[15px] font-medium leading-none tracking-[-0.01em] transition ${
                       sidebarCollapsed ? 'justify-center px-2' : 'justify-start px-3.5'
                     } ${
                       active
@@ -200,7 +200,7 @@ export function LayoutShell({
             </nav>
           </div>
 
-          <div className="space-y-1 border-t pt-3" style={{ borderColor: 'var(--cl-border-subtle)' }}>
+          <div className="cl-sidebar-foot space-y-1 border-t pt-3" style={{ borderColor: 'var(--cl-border-subtle)' }}>
             <button
               type="button"
               data-testid="sidebar-toggle"
@@ -238,9 +238,9 @@ export function LayoutShell({
       )}
 
       {/* Main Content */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="cl-content flex min-w-0 flex-1 flex-col">
         {/* Sticky Top Bar */}
-        <header className="cl-surface sticky top-0 z-20 border-b px-4 py-2 backdrop-blur-md sm:px-6">
+        <header className="cl-surface cl-topbar sticky top-0 z-20 border-b px-4 py-2 backdrop-blur-md sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-2.5">
             {/* Device Pills */}
             <div className="flex flex-wrap items-center gap-1.5">
@@ -372,7 +372,7 @@ export function LayoutShell({
               <button
                 type="button"
                 onClick={() => onTabChange('live')}
-                className="hidden h-7 cursor-pointer items-center gap-2 rounded-md border px-2.5 font-mono text-[11px] leading-none tabular-nums transition sm:inline-flex"
+                className="cl-live-badge hidden h-7 cursor-pointer items-center gap-2 rounded-md border px-2.5 font-mono text-[11px] leading-none tabular-nums transition sm:inline-flex"
                 style={{
                   borderColor: 'var(--cl-border-subtle)',
                   backgroundColor: 'var(--cl-bg-sidebar)',

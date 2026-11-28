@@ -1,13 +1,29 @@
-import { useEffect, useRef, useState } from 'react'
-import { Check, EyeOff, Languages, LayoutGrid, Palette, Rows3 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Check, EyeOff, Languages, LayoutGrid, Palette, Rows3, Sparkles } from 'lucide-react'
 import { useI18n } from '../i18n/I18nProvider'
 import { useTheme } from '../theme/ThemeProvider'
+import { ThemeGalleryModal } from './ThemeGalleryModal'
 
 export function AppearancePopover() {
-  const { themeId, availableThemes, setThemeId, layout, setLayout, privacyMode, togglePrivacyMode } = useTheme()
+  const {
+    themeId,
+    availableThemes,
+    pinnedThemeIds,
+    setThemeId,
+    layout,
+    setLayout,
+    privacyMode,
+    togglePrivacyMode,
+  } = useTheme()
   const { lang, setLang, m } = useI18n()
   const [open, setOpen] = useState(false)
+  const [galleryOpen, setGalleryOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
+
+  const quickThemes = useMemo(
+    () => availableThemes.filter((t) => pinnedThemeIds.includes(t.id) || t.id === themeId),
+    [availableThemes, pinnedThemeIds, themeId],
+  )
 
   useEffect(() => {
     if (!open) return
@@ -40,12 +56,15 @@ export function AppearancePopover() {
       </button>
 
       {open && (
-        <div className="cl-popover absolute right-0 top-9 z-40 w-72 rounded-xl border p-3 shadow-xl">
-          <div className="mb-2 text-[11px] font-semibold tracking-tight text-[var(--cl-text-muted)]">
-            {m.appearance.themeStyle}
+        <div className="cl-popover cl-thin-scroll absolute right-0 top-9 z-40 max-h-[calc(100vh-56px)] w-72 overflow-y-auto rounded-xl border p-3 shadow-xl">
+          <div className="mb-2 flex items-center justify-between text-[11px] font-semibold tracking-tight text-[var(--cl-text-muted)]">
+            <span>{m.appearance.themeStyle}</span>
+            <span className="font-mono text-[10px] opacity-80">
+              {quickThemes.length}/{availableThemes.length}
+            </span>
           </div>
           <div className="space-y-1">
-            {availableThemes.map((t) => {
+            {quickThemes.map((t) => {
               const active = t.id === themeId
               const localized = m.appearance.themes[t.id]
               return (
@@ -77,6 +96,24 @@ export function AppearancePopover() {
               )
             })}
           </div>
+
+          <button
+            type="button"
+            data-testid="open-theme-gallery-btn"
+            onClick={() => {
+              setOpen(false)
+              setGalleryOpen(true)
+            }}
+            className="cl-btn-secondary mt-2 !h-7 w-full justify-between !px-2.5 !text-[11px]"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3" style={{ color: 'var(--cl-accent-primary)' }} />
+              {m.appearance.openGallery}
+            </span>
+            <span className="font-mono text-[10px] text-[var(--cl-text-muted)]">
+              {availableThemes.length}
+            </span>
+          </button>
 
           <div
             className="my-2.5 border-t"
@@ -192,6 +229,8 @@ export function AppearancePopover() {
           </button>
         </div>
       )}
+
+      <ThemeGalleryModal open={galleryOpen} onClose={() => setGalleryOpen(false)} />
     </div>
   )
 }
